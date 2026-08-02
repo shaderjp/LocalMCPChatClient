@@ -2,6 +2,8 @@
 
 Gemma 4 E2B/E4Bをローカルで実行し、MCPツールを人間の承認付きで利用できるWindows向けチャットクライアントです。モデル推論、会話履歴、MCP設定は端末内に保存され、アプリからテレメトリやクラウドLLMへの送信は行いません。
 
+現在のバージョンは`0.1.0`です。変更内容は[CHANGELOG](CHANGELOG.md)を参照してください。
+
 > [!WARNING]
 > MCPサーバーは、承認後にファイルやネットワークへアクセスする可能性があります。信頼できるサーバーだけを登録し、承認画面に表示されるツール名と引数を確認してください。
 
@@ -21,7 +23,16 @@ Gemma 4 E2B/E4Bをローカルで実行し、MCPツールを人間の承認付�
 
 ## すぐに使う
 
-配布されたPortable ZIPを任意の書き込み可能なフォルダーへ展開し、`LocalMCPChatClient.App.exe`を起動します。.NETランタイムの追加インストールは不要です。
+GitHub Releaseでは次の2形式を配布します。どちらも.NETランタイムの追加インストールは不要です。
+
+| 成果物 | 用途 |
+|---|---|
+| `LocalMCPChatClient-0.1.0-win-x64.zip` | 展開して使う通常のPortable版。構成ファイルを確認しやすい |
+| `LocalMCPChatClient-0.1.0-win-x64.exe` | アプリ本体を1ファイルにまとめたself-contained版 |
+
+SHA-256ファイルも各成果物と一緒に配布します。単体EXEにはモデルと`llama-server`は含まれず、ネイティブ依存関係は実行時に一時ディレクトリへ展開される場合があります。
+
+Portable ZIPを使う場合は任意の書き込み可能なフォルダーへ展開し、`LocalMCPChatClient.exe`を起動します。単体EXEはダウンロードしたファイルを直接起動できます。
 
 初回セットアップでは次を行います。
 
@@ -70,6 +81,7 @@ Visual StudioとCLIの詳しい手順は[開発ガイド](docs/development.md)�
 | [MCP設定ガイド](docs/mcp-configuration.md) | 利用者・MCP開発者 | stdio / HTTP設定、秘密情報、D3D12設定例 |
 | [トラブルシューティング](docs/troubleshooting.md) | 利用者・開発者 | 推論、モデル、MCP、設定、ログの確認方法 |
 | [開発ガイド](docs/development.md) | 開発者 | Visual Studio、ビルド、テスト、発行、リポジトリ規約 |
+| [リリース手順](docs/releasing.md) | メンテナー | バージョン更新、成果物検証、タグとGitHub Release |
 | [アーキテクチャ](docs/architecture.md) | 開発者 | プロジェクト境界、推論・MCP・保存の設計 |
 | [MCPプロファイル例](docs/mcp-profile-examples.json) | 開発者 | 保存されるJSON形状の参考例 |
 
@@ -94,9 +106,11 @@ dotnet build LocalMCPChatClient.sln -c Release --no-restore
 dotnet test LocalMCPChatClient.sln -c Release --no-build
 dotnet publish src/LocalMCPChatClient.App/LocalMCPChatClient.App.csproj `
   -c Release -r win-x64 --self-contained true -o artifacts/portable
+dotnet publish src/LocalMCPChatClient.App/LocalMCPChatClient.App.csproj `
+  -c Release -p:PublishProfile=win-x64-single-file -o artifacts/single-file
 ```
 
-GitHub ActionsでもWindows上でrestore、build、test、Portable発行、SHA-256作成、大容量ファイル検査を実行します。
+GitHub ActionsでもWindows上でrestore、build、test、Portable ZIPと単体EXEの発行、SHA-256作成、大容量ファイル検査を実行します。
 
 ## ライセンス
 

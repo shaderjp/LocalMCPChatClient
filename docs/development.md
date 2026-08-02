@@ -95,6 +95,8 @@ LocalMCPChatClient.sln
 
 ## Portable版を発行する
 
+### Portableフォルダー
+
 ```powershell
 dotnet publish src/LocalMCPChatClient.App/LocalMCPChatClient.App.csproj `
   -c Release `
@@ -104,13 +106,26 @@ dotnet publish src/LocalMCPChatClient.App/LocalMCPChatClient.App.csproj `
 
 Compress-Archive `
   -Path artifacts/portable/* `
-  -DestinationPath artifacts/LocalMCPChatClient-win-x64.zip `
+  -DestinationPath artifacts/LocalMCPChatClient-0.1.0-win-x64.zip `
   -Force
 
-Get-FileHash artifacts/LocalMCPChatClient-win-x64.zip -Algorithm SHA256
+Get-FileHash artifacts/LocalMCPChatClient-0.1.0-win-x64.zip -Algorithm SHA256
 ```
 
-`artifacts`は生成物でありGit管理しません。GitHub Actionsは同等の発行を行い、ZIPとSHA-256を成果物にします。`v*`タグではGitHub Releaseへ添付します。
+### 単体EXE
+
+Visual Studioでは`LocalMCPChatClient.App`の発行プロファイル`win-x64-single-file`を選択します。CLIでは次を実行します。
+
+```powershell
+dotnet publish src/LocalMCPChatClient.App/LocalMCPChatClient.App.csproj `
+  -c Release `
+  -p:PublishProfile=win-x64-single-file `
+  -o artifacts/single-file
+```
+
+出力される`LocalMCPChatClient.exe`はself-containedの単一ファイルです。WPFのトリミングは無効にし、SQLiteなどのネイティブ依存関係は実行時抽出を許可しています。
+
+`artifacts`は生成物でありGit管理しません。GitHub Actionsは両形式を発行し、バージョン付きZIP、単体EXE、それぞれのSHA-256を成果物にします。`v*`タグではGitHub Releaseへ添付します。
 
 ## 変更前後の確認
 

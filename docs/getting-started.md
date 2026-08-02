@@ -6,11 +6,21 @@
 
 ### Portable ZIPを使う
 
-1. `LocalMCPChatClient-win-x64.zip`をダウンロードする
+1. `LocalMCPChatClient-<version>-win-x64.zip`をダウンロードする
 2. ZIPの内容を、ユーザーが書き込める任意のフォルダーへ展開する
-3. `LocalMCPChatClient.App.exe`を起動する
+3. `LocalMCPChatClient.exe`を起動する
 
 Portable版はself-containedなので、実行するPCへ.NETランタイムを別途導入する必要はありません。モデルと推論ランタイムはZIPに含まれず、初回セットアップで取得します。
+
+### 単体EXEを使う
+
+`LocalMCPChatClient-<version>-win-x64.exe`は、アプリ本体を1ファイルにまとめたself-contained版です。ZIPの展開なしで起動できます。モデルと`llama-server`は含まれないため、初回セットアップはPortable版と同様に必要です。
+
+ダウンロード後は、同名の`.sha256`ファイルを使って改ざんや破損がないことを確認できます。
+
+```powershell
+Get-FileHash .\LocalMCPChatClient-0.1.0-win-x64.exe -Algorithm SHA256
+```
 
 ### ソースから起動する
 
