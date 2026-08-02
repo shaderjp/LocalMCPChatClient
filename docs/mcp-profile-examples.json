@@ -1,0 +1,46 @@
+{
+  "$comment": "保存形式の参考例です。現在のUIにJSONインポート機能はありません。",
+  "stdio": {
+    "id": "filesystem",
+    "name": "ローカルファイル",
+    "enabled": true,
+    "transport": "stdio",
+    "command": "npx",
+    "arguments": ["-y", "@modelcontextprotocol/server-filesystem", "D:\\Work"],
+    "workingDirectory": "D:\\Work",
+    "environment": [
+      { "name": "EXAMPLE_TOKEN", "secretRef": "mcp:filesystem:env:EXAMPLE_TOKEN" }
+    ],
+    "startupTimeoutSeconds": 10,
+    "timeoutSeconds": 60
+  },
+  "streamableHttp": {
+    "id": "local-http",
+    "name": "ローカルHTTP MCP",
+    "enabled": true,
+    "transport": "streamableHttp",
+    "url": "http://localhost:3001/mcp",
+    "headers": [
+      { "name": "Authorization", "secretRef": "mcp:local-http:header:Authorization" }
+    ],
+    "enableStandaloneGetStream": true,
+    "bufferHttpRequestBody": false,
+    "startupTimeoutSeconds": 10,
+    "timeoutSeconds": 60
+  },
+  "d3d12LookdevPt": {
+    "id": "d3d12_lookdev_pt",
+    "name": "D3D12 Lookdev PT",
+    "enabled": true,
+    "transport": "streamableHttp",
+    "url": "http://127.0.0.1:8777/mcp",
+    "headers": [
+      { "name": "MCP-Protocol-Version", "value": "2025-11-25" }
+    ],
+    "bearerTokenEnvironmentVariable": "D3D12LOOKDEVPT_MCP_TOKEN",
+    "enableStandaloneGetStream": true,
+    "bufferHttpRequestBody": false,
+    "startupTimeoutSeconds": 10,
+    "timeoutSeconds": 120
+  }
+}
