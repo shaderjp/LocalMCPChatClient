@@ -4,6 +4,9 @@ Gemma 4 E2B/E4Bをローカルで実行し、MCPツールを人間の承認付�
 
 現在のバージョンは`0.1.1`です。変更内容は[CHANGELOG](CHANGELOG.md)を参照してください。
 
+> [!IMPORTANT]
+> `0.1.1`は配布物のライセンス表示を修正したリリースです。`0.1.0`の配布物では第三者ライセンス通知を確認できないため、`0.1.1`以降を使用してください。
+
 > [!WARNING]
 > MCPサーバーは、承認後にファイルやネットワークへアクセスする可能性があります。信頼できるサーバーだけを登録し、承認画面に表示されるツール名と引数を確認してください。
 
@@ -19,6 +22,7 @@ Gemma 4 E2B/E4Bをローカルで実行し、MCPツールを人間の承認付�
 - 推論・モデル登録・MCP・承認・資格情報をまとめて初期化する設定リセット
 - 再開可能ダウンロード、空き容量確認、SHA-256検証、既存ファイルのインポート
 - self-contained `win-x64` Portable発行
+- 配布物へのライセンス通知同梱と、設定画面からのライセンス表示
 
 初期版では、テキストチャットとMCP Toolsを対象とします。クラウドLLM、マルチモーダル入力、MCP Resources / Prompts、旧SSE transport、OAuth、非Windows GUIは対象外です。
 
@@ -41,6 +45,8 @@ GitHub Releaseでは次の2形式を配布します。どちらも.NETランタ�
 | `LocalMCPChatClient-0.1.1-win-x64.exe` | アプリ本体を1ファイルにまとめたself-contained版 |
 
 SHA-256ファイルも各成果物と一緒に配布します。単体EXEにはモデルと`llama-server`は含まれず、ネイティブ依存関係は実行時に一時ディレクトリへ展開される場合があります。
+
+Portable ZIPには`LICENSE.txt`、`THIRD-PARTY-NOTICES.txt`、詳細な`licenses`フォルダーを同梱します。単体EXEでは「設定」→「承認とプライバシー」→「ライセンス情報を表示」から、同じライセンスと第三者通知を確認できます。Releaseにはアプリ本体のライセンスと第三者通知も個別ファイルとして添付します。
 
 Portable ZIPを使う場合は任意の書き込み可能なフォルダーへ展開し、`LocalMCPChatClient.exe`を起動します。単体EXEはダウンロードしたファイルを直接起動できます。
 
@@ -125,7 +131,7 @@ GitHub ActionsでもWindows上でrestore、build、test、Portable ZIPと単体E
 
 ## ライセンス
 
-本リポジトリのソースコードは[MIT License](LICENSE)です。ダウンロードされるモデルと推論ランタイムには、それぞれの配布元ライセンスが適用されます。
+本リポジトリのソースコードは[MIT License](LICENSE)です。アプリに同梱するライブラリと.NET/WPFランタイムの通知は[THIRD-PARTY-NOTICES.txt](THIRD-PARTY-NOTICES.txt)および[licenses](licenses)に収録しています。ダウンロードされるモデルと推論ランタイムには、それぞれの配布元ライセンスが適用されます。
 
 - [Gemma 4 E2B model card](https://huggingface.co/google/gemma-4-E2B-it-qat-q4_0-gguf)
 - [Gemma 4 E4B model card](https://huggingface.co/google/gemma-4-E4B-it-qat-q4_0-gguf)

@@ -11,6 +11,22 @@
     <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.10" />
   </ItemGroup>
 
+  <ItemGroup>
+    <EmbeddedResource Include="..\..\LICENSE" LogicalName="LocalMCPChatClient.LicenseTexts.APPLICATION-LICENSE.txt" />
+    <EmbeddedResource Include="..\..\THIRD-PARTY-NOTICES.txt" LogicalName="LocalMCPChatClient.LicenseTexts.THIRD-PARTY-NOTICES.txt" />
+    <EmbeddedResource Include="..\..\licenses\APACHE-2.0.txt" LogicalName="LocalMCPChatClient.LicenseTexts.APACHE-2.0.txt" />
+    <EmbeddedResource Include="..\..\licenses\DOTNET-LIBRARY-LICENSE.txt" LogicalName="LocalMCPChatClient.LicenseTexts.DOTNET-LIBRARY-LICENSE.txt" />
+    <EmbeddedResource Include="..\..\licenses\DOTNET-RUNTIME-LICENSE.txt" LogicalName="LocalMCPChatClient.LicenseTexts.DOTNET-RUNTIME-LICENSE.txt" />
+    <EmbeddedResource Include="..\..\licenses\DOTNET-RUNTIME-THIRD-PARTY-NOTICES.txt" LogicalName="LocalMCPChatClient.LicenseTexts.DOTNET-RUNTIME-THIRD-PARTY-NOTICES.txt" />
+    <EmbeddedResource Include="..\..\licenses\MCP-CSHARP-SDK-LICENSE.txt" LogicalName="LocalMCPChatClient.LicenseTexts.MCP-CSHARP-SDK-LICENSE.txt" />
+    <EmbeddedResource Include="..\..\licenses\MCP-CSHARP-SDK-THIRD-PARTY-NOTICES.txt" LogicalName="LocalMCPChatClient.LicenseTexts.MCP-CSHARP-SDK-THIRD-PARTY-NOTICES.txt" />
+    <EmbeddedResource Include="..\..\licenses\WINDOWS-SDK-LICENSE.txt" LogicalName="LocalMCPChatClient.LicenseTexts.WINDOWS-SDK-LICENSE.txt" />
+
+    <None Include="..\..\LICENSE" Link="LICENSE.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <None Include="..\..\THIRD-PARTY-NOTICES.txt" Link="THIRD-PARTY-NOTICES.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <None Include="..\..\licenses\*.txt" Link="licenses\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <AssemblyName>LocalMCPChatClient</AssemblyName>

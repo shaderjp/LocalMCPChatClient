@@ -24,8 +24,10 @@ LocalMCPChatClientは、Gitタグとアプリのバージョンが一致した�
 | `LocalMCPChatClient-<version>-win-x64.zip.sha256` | ZIPのSHA-256 |
 | `LocalMCPChatClient-<version>-win-x64.exe` | self-contained単体EXE |
 | `LocalMCPChatClient-<version>-win-x64.exe.sha256` | EXEのSHA-256 |
+| `LocalMCPChatClient-<version>-LICENSE.txt` | LocalMCPChatClient本体のMIT License |
+| `LocalMCPChatClient-<version>-THIRD-PARTY-NOTICES.txt` | 同梱ライブラリの第三者通知一覧 |
 
-モデル、`llama-server`、DB、ログはどの成果物にも含めません。
+Portable ZIPには上記に加えて`licenses`フォルダーを含めます。単体EXEにはライセンス文書を埋め込み、「設定」から表示できるようにします。モデル、`llama-server`、DB、ログはどの成果物にも含めません。
 
 ## リリース前チェック
 
@@ -36,6 +38,8 @@ LocalMCPChatClientは、Gitタグとアプリのバージョンが一致した�
 5. Portable ZIPと単体EXEをローカル発行する
 6. EXEのFileVersionとProductVersionを確認する
 7. クリーンなWindows環境で初回セットアップを手動確認する
+8. Portable出力に`LICENSE.txt`、`THIRD-PARTY-NOTICES.txt`、`licenses`フォルダーがあることを確認する
+9. 単体EXEの「設定」からすべてのライセンス文書を表示できることを確認する
 
 ```powershell
 ./scripts/check-large-files.ps1
@@ -65,7 +69,8 @@ git push origin v0.1.1
 ## 公開後チェック
 
 - GitHub ReleaseがDraftやPrereleaseになっていないこと
-- 4つの成果物が添付されていること
+- ZIP、EXE、それぞれのSHA-256、アプリライセンス、第三者通知の6成果物が添付されていること
 - `.sha256`のファイル名とハッシュが対応していること
 - 単体EXEのプロパティに意図した製品・ファイルバージョンが表示されること
 - Portable ZIPと単体EXEの双方で初回画面が起動すること
+- Portable ZIP内とアプリ内のライセンス文書が欠けていないこと

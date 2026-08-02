@@ -67,4 +67,10 @@ public partial class SettingsWindow : Window
                 "設定の初期化", MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
+
+    private void ShowLicenses_Click(object sender, RoutedEventArgs e)
+    {
+        var window = new LicensesWindow { Owner = this };
+        window.ShowDialog();
+    }
 }
