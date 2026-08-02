@@ -189,4 +189,10 @@ internal sealed class MemorySecretStore : ISecretStore
         _values.Remove(key);
         return Task.CompletedTask;
     }
+    public Task DeleteAllAsync(CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        _values.Clear();
+        return Task.CompletedTask;
+    }
 }

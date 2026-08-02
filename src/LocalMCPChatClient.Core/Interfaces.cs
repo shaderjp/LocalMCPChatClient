@@ -17,6 +17,7 @@ public interface ISettingsStore
     Task<AppSettings> LoadAsync(CancellationToken cancellationToken = default);
     Task SaveAsync(AppSettings settings, CancellationToken cancellationToken = default);
     Task<AppSettings> UpdateAsync(Func<AppSettings, AppSettings> update, CancellationToken cancellationToken = default);
+    Task<AppSettings> ResetAsync(CancellationToken cancellationToken = default);
 }
 
 public interface ISecretStore
@@ -24,6 +25,7 @@ public interface ISecretStore
     Task SetAsync(string key, string value, CancellationToken cancellationToken = default);
     Task<string?> GetAsync(string key, CancellationToken cancellationToken = default);
     Task DeleteAsync(string key, CancellationToken cancellationToken = default);
+    Task DeleteAllAsync(CancellationToken cancellationToken = default);
 }
 
 public interface IConversationStore
@@ -38,6 +40,11 @@ public interface IConversationStore
     Task RenameAsync(Guid conversationId, string title, CancellationToken cancellationToken = default);
     Task DeleteAsync(Guid conversationId, CancellationToken cancellationToken = default);
     Task DeleteAllAsync(CancellationToken cancellationToken = default);
+}
+
+public interface IConversationExporter
+{
+    Task ExportMarkdownAsync(Guid conversationId, string destinationPath, CancellationToken cancellationToken = default);
 }
 
 public interface IInferenceService : IAsyncDisposable

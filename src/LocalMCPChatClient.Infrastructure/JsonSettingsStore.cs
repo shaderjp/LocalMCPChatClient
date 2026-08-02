@@ -57,6 +57,21 @@ public sealed class JsonSettingsStore(IAppPaths paths) : ISettingsStore
         }
     }
 
+    public async Task<AppSettings> ResetAsync(CancellationToken cancellationToken = default)
+    {
+        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            var defaults = CreateDefaults();
+            await SaveCoreAsync(defaults, cancellationToken).ConfigureAwait(false);
+            return defaults;
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
     private async Task<AppSettings> LoadCoreAsync(CancellationToken cancellationToken)
     {
         paths.EnsureCreated();

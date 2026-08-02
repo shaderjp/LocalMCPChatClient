@@ -2,6 +2,14 @@
 
 このプロジェクトの主な変更をバージョンごとに記録します。
 
+## [0.1.1] - 2026-08-02
+
+### Added
+
+- 推論、モデル登録、MCP、承認ルール、Credential Manager項目をまとめて初期化する設定リセット
+- 選択したチャット履歴をTool Call監査情報付きMarkdownとして保存する機能
+- スクリーンショットとD3D12LookDevPTWinUI3を使ったMCP連携チュートリアル
+
 ## [0.1.0] - 2026-08-02
 
 初回リリース。
@@ -18,3 +26,4 @@
 - Portable ZIPとself-contained単体EXEのWindows x64配布
 
 [0.1.0]: https://github.com/shaderjp/LocalMCPChatClient/releases/tag/v0.1.0
+[0.1.1]: https://github.com/shaderjp/LocalMCPChatClient/releases/tag/v0.1.1

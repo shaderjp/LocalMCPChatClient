@@ -106,10 +106,10 @@ dotnet publish src/LocalMCPChatClient.App/LocalMCPChatClient.App.csproj `
 
 Compress-Archive `
   -Path artifacts/portable/* `
-  -DestinationPath artifacts/LocalMCPChatClient-0.1.0-win-x64.zip `
+  -DestinationPath artifacts/LocalMCPChatClient-0.1.1-win-x64.zip `
   -Force
 
-Get-FileHash artifacts/LocalMCPChatClient-0.1.0-win-x64.zip -Algorithm SHA256
+Get-FileHash artifacts/LocalMCPChatClient-0.1.1-win-x64.zip -Algorithm SHA256
 ```
 
 ### 単体EXE

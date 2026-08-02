@@ -21,6 +21,7 @@
                     <Button Content="＋ 新しいチャット" Command="{Binding NewChatCommand}" HorizontalContentAlignment="Left" />
                 </StackPanel>
                 <StackPanel DockPanel.Dock="Bottom" Margin="0,8,0,0">
+                    <Button Content="Markdownで保存" Click="ExportMarkdown_Click" />
                     <Button Content="選択中のチャットを削除" Command="{Binding DeleteChatCommand}" />
                     <Button Content="設定" Command="{Binding OpenSettingsCommand}" />
                 </StackPanel>

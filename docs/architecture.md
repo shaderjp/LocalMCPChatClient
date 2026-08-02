@@ -14,6 +14,8 @@ flowchart LR
     MCP --> Servers["MCP stdio / Streamable HTTP"]
     Agent --> Approval["承認ルール / WPF確認画面"]
     Agent --> Store["SQLite会話履歴"]
+    UI --> Export["MarkdownConversationExporter"]
+    Export --> Store
     Setup["初回セットアップ / 設定"] --> Installer["再開可能ダウンロード\nSHA-256検証"]
     Installer --> RuntimeFiles["CPU / CUDA / Vulkanランタイム"]
     Installer --> Models["Gemma 4 GGUF"]
@@ -143,6 +145,10 @@ flowchart TD
 設定ファイルは一時ファイルへ書き出してから置換し、途中書き込みによる破損を避けます。JSONが破損している場合は`.corrupt-<timestamp>`へ退避して既定値を再作成します。
 
 秘密として入力した環境変数・HTTPヘッダーの実体はWindows Credential Managerへ保存し、`settings.json`には`secretRef`だけを残します。通常欄に入力した値は平文保存であるため、秘密値には使用しません。
+
+設定の全リセットでは、推論プロセスとMCP接続を停止し、承認ルールのインメモリ状態、`LocalMCPChatClient/`接頭辞のCredential Manager項目、`settings.json`を初期化します。会話DB、モデル、ランタイム、ログは設定とは別のデータとして保持します。
+
+`MarkdownConversationExporter`は会話とメッセージを読み取り、UTF-8（BOMなし）で利用者が指定したパスへ書き出します。本文に加えてTool Call JSONとツール結果を保持し、コードフェンス内のバッククォート列に応じてフェンス長を調整します。
 
 ## アーティファクト管理
 

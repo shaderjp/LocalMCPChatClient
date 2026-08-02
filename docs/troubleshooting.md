@@ -18,7 +18,7 @@
 - ZIPと同時に配布されたSHA-256とファイルハッシュを比較する
 
 ```powershell
-Get-FileHash .\LocalMCPChatClient-0.1.0-win-x64.zip -Algorithm SHA256
+Get-FileHash .\LocalMCPChatClient-0.1.1-win-x64.zip -Algorithm SHA256
 ```
 
 ### Visual Studioの場合
@@ -92,6 +92,17 @@ CPU性能、ストレージ速度、モデルサイズによって初回読み�
 - サーバーがchunked requestを受け付けない場合は「Content-Lengthを送信」を有効にする
 - 必要なプロトコルバージョンヘッダーを`NAME=VALUE`形式で追加する
 
+### D3D12LookDevPTWinUI3へ接続できない
+
+- D3D12LookDevPTWinUI3の「MCP Server」パネルでサーバーが起動中か確認する
+- URLを`http://127.0.0.1:8777/mcp`にする
+- 「standalone GET」をオフにする。このサーバーの`GET /mcp`は仕様どおり`405 Method Not Allowed`を返す
+- `MCP-Protocol-Version=2025-11-25`ヘッダーを確認する
+- `401 Unauthorized`の場合は「Copy Token」でトークンを取り直し、環境変数または秘密のHTTPヘッダーを更新する
+- `confirm_mutations`で変更処理が止まる場合は、サーバー側のMCPパネルで承認待ちをApproveまたはRejectする
+
+画面付きの設定手順は[D3D12LookDevPTWinUI3との連携例](d3d12lookdevpt-integration.md)を参照してください。
+
 ### stdioサーバーが起動しない
 
 - commandがPATHで解決できるか、または完全パスか確認する
@@ -104,7 +115,7 @@ stdio起動ではシェルを使用しません。`command`欄にパイプ、リ
 ## ツールが呼ばれない
 
 - 画面右上のMCP表示で接続数とツール数を確認する
-- 「設定」→「MCP」で接続テストを実行する
+- 「設定」→「MCP接続」で接続テストを実行する
 - ユーザー入力で目的と必要な操作を具体的に伝える
 - そのツールがGemmaへ渡せるJSON Schemaを公開しているか確認する
 - 1ターン最大8回のツール反復へ達していないかログを確認する
@@ -113,11 +124,15 @@ stdio起動ではシェルを使用しません。`command`欄にパイプ、リ
 
 ## 設定を初期状態へ戻したい
 
+通常は「設定」→「承認とプライバシー」→「すべての設定を初期化」を使用します。この操作はMCP接続を切断し、アプリが保存したCredential Managerの秘密情報と設定を初期化します。チャット履歴と取得済みモデル・ランタイムは保持されます。
+
+設定画面を開けない場合だけ、次の手動手順を使用します。
+
 1. LocalMCPChatClientを終了する
 2. `%LocalAppData%\LocalMCPChatClient\settings.json`を`settings.backup.json`などへ名前変更する
 3. アプリを起動する
 
-新しい既定設定が作られます。会話履歴を残す場合は`history.db`を移動・削除しないでください。MCPの秘密値はWindows Credential Managerに別途残るため、不要になった資格情報はWindowsの「資格情報マネージャー」から確認してください。
+新しい既定設定が作られます。会話履歴を残す場合は`history.db`を移動・削除しないでください。手動手順ではMCPの秘密値がWindows Credential Managerに残るため、不要になった資格情報はWindowsの「資格情報マネージャー」から確認してください。
 
 ## 問題報告に含める情報
 

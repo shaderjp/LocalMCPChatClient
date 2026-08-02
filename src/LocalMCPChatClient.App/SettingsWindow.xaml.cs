@@ -41,4 +41,30 @@ public partial class SettingsWindow : Window
                 MessageBoxButton.YesNo, MessageBoxImage.Warning) == MessageBoxResult.Yes)
             await _viewModel.ClearHistoryAsync();
     }
+
+    private async void ResetSettings_Click(object sender, RoutedEventArgs e)
+    {
+        const string message = "すべての設定を初期状態へ戻します。\n\n" +
+                               "初期化される項目:\n" +
+                               "・モデル登録と推論設定\n" +
+                               "・MCP接続と保存済みシークレット\n" +
+                               "・ツール承認ルール\n\n" +
+                               "チャット履歴、取得済みモデル、推論ランタイムは削除されません。\n" +
+                               "この操作は元に戻せません。続行しますか？";
+        if (MessageBox.Show(this, message, "設定の初期化", MessageBoxButton.YesNo,
+                MessageBoxImage.Warning, MessageBoxResult.No) != MessageBoxResult.Yes) return;
+
+        try
+        {
+            await _viewModel.ResetSettingsAsync();
+            MessageBox.Show(this, "設定を初期化しました。次回起動時に初回セットアップが開きます。",
+                "設定の初期化", MessageBoxButton.OK, MessageBoxImage.Information);
+            Close();
+        }
+        catch (Exception exception)
+        {
+            MessageBox.Show(this, "設定を初期化できませんでした。\n\n" + exception.Message,
+                "設定の初期化", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
 }

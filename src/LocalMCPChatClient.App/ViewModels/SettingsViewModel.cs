@@ -13,6 +13,7 @@ public sealed partial class SettingsViewModel(
     IConversationStore conversationStore,
     IToolApprovalService approvalService,
     IMcpConnectionManager mcpManager,
+    IInferenceRuntimeManager runtimeManager,
     IArtifactInstaller artifactInstaller,
     IAppPaths paths) : ObservableObject
 {
@@ -195,6 +196,26 @@ public sealed partial class SettingsViewModel(
     {
         await conversationStore.DeleteAllAsync();
         StatusText = "チャット履歴をすべて削除しました。";
+    }
+
+    public async Task ResetSettingsAsync()
+    {
+        IsWorking = true;
+        try
+        {
+            await runtimeManager.StopAsync();
+            var connections = await mcpManager.GetConnectionsAsync();
+            foreach (var connection in connections) await mcpManager.DisconnectAsync(connection.ServerId);
+            await approvalService.ClearAsync();
+            await secretStore.DeleteAllAsync();
+            _settings = await settingsStore.ResetAsync();
+            await InitializeAsync();
+            StatusText = "すべての設定を初期化しました。次回起動時に初回セットアップが開きます。";
+        }
+        finally
+        {
+            IsWorking = false;
+        }
     }
 
     [RelayCommand]
