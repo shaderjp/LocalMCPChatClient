@@ -1,0 +1,35 @@
+# Visual Studio / .NET build output
+.vs/
+**/bin/
+**/obj/
+*.user
+*.suo
+TestResults/
+coverage/
+artifacts/
+publish/
+
+# Local application data and downloaded artifacts
+.local-data/
+Models/
+Runtimes/
+Downloads/
+Logs/
+*.gguf
+*.ggml
+*.partial
+*.download
+*.db
+*.db-shm
+*.db-wal
+*.log
+
+# Archives and installer output are release artifacts, not source
+*.zip
+*.7z
+*.nupkg
+
+# OS/editor files
+.DS_Store
+Thumbs.db
+*.swp

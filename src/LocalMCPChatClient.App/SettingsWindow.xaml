@@ -1,0 +1,117 @@
+<Window x:Class="LocalMCPChatClient.App.SettingsWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Local MCP Chat 設定" Width="960" Height="760" MinWidth="820" MinHeight="620"
+        WindowStartupLocation="CenterOwner" Background="{StaticResource WindowBrush}" Foreground="{StaticResource TextBrush}">
+    <DockPanel Margin="18">
+        <Border DockPanel.Dock="Bottom" BorderBrush="#334155" BorderThickness="0,1,0,0" Padding="4,10,4,0">
+            <DockPanel>
+                <Button DockPanel.Dock="Right" Content="閉じる" IsCancel="True" Click="Close_Click" MinWidth="80" />
+                <ProgressBar DockPanel.Dock="Right" Value="{Binding ProgressValue}" Width="130" Height="8" Margin="8" />
+                <TextBlock Text="{Binding StatusText}" VerticalAlignment="Center" Foreground="{StaticResource MutedTextBrush}" TextTrimming="CharacterEllipsis" />
+            </DockPanel>
+        </Border>
+
+        <TabControl Background="{StaticResource PanelBrush}" BorderBrush="#334155">
+            <TabItem Header="モデルと推論">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel Margin="22" MaxWidth="760" HorizontalAlignment="Left">
+                        <TextBlock Text="モデル" FontSize="18" FontWeight="Bold" Foreground="{StaticResource AccentBrush}" />
+                        <ComboBox ItemsSource="{Binding Models}" SelectedItem="{Binding SelectedModel}" DisplayMemberPath="DisplayName" Margin="0,8,0,4" />
+                        <StackPanel Orientation="Horizontal">
+                            <Button Content="選択モデルをダウンロード" Command="{Binding InstallModelCommand}" />
+                            <Button Content="既存GGUFを登録" Click="ImportModel_Click" />
+                        </StackPanel>
+                        <TextBlock Text="モデル保存先" Margin="0,10,0,3" Foreground="{StaticResource MutedTextBrush}" />
+                        <DockPanel><Button DockPanel.Dock="Right" Content="変更" Click="ChooseModelDirectory_Click"/><TextBox Text="{Binding ModelDirectory}" IsReadOnly="True" /></DockPanel>
+                        <Separator Margin="0,18" />
+
+                        <TextBlock Text="推論ランタイム" FontSize="18" FontWeight="Bold" Foreground="{StaticResource AccentBrush}" />
+                        <Grid Margin="0,8,0,4">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="130"/><ColumnDefinition Width="220"/><ColumnDefinition Width="130"/><ColumnDefinition Width="220"/></Grid.ColumnDefinitions>
+                            <TextBlock Text="チャットモード" VerticalAlignment="Center" />
+                            <ComboBox Grid.Column="1" ItemsSource="{Binding InferenceModes}" SelectedItem="{Binding InferenceMode}" />
+                            <TextBlock Grid.Column="2" Text="取得するbackend" VerticalAlignment="Center" />
+                            <ComboBox Grid.Column="3" ItemsSource="{Binding RuntimeBackends}" SelectedItem="{Binding RuntimeBackend}" />
+                        </Grid>
+                        <StackPanel Orientation="Horizontal">
+                            <Button Content="backendをダウンロード" Command="{Binding InstallRuntimeCommand}" />
+                            <Button Content="既存llama-serverを登録" Click="ImportRuntime_Click" />
+                        </StackPanel>
+                        <TextBlock Text="カスタム llama-server" Margin="0,10,0,3" Foreground="{StaticResource MutedTextBrush}" />
+                        <TextBox Text="{Binding CustomRuntimePath}" IsReadOnly="True" />
+                        <Separator Margin="0,18" />
+
+                        <TextBlock Text="生成設定" FontSize="18" FontWeight="Bold" Foreground="{StaticResource AccentBrush}" />
+                        <Grid Margin="0,8">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="170"/><ColumnDefinition Width="180"/></Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions><RowDefinition/><RowDefinition/><RowDefinition/></Grid.RowDefinitions>
+                            <TextBlock Text="コンテキスト長" VerticalAlignment="Center"/><TextBox Grid.Column="1" Text="{Binding ContextSize}" Margin="3" />
+                            <TextBlock Grid.Row="1" Text="最大出力トークン" VerticalAlignment="Center"/><TextBox Grid.Row="1" Grid.Column="1" Text="{Binding MaxOutputTokens}" Margin="3" />
+                            <TextBlock Grid.Row="2" Text="Temperature (0～2)" VerticalAlignment="Center"/><TextBox Grid.Row="2" Grid.Column="1" Text="{Binding Temperature}" Margin="3" />
+                        </Grid>
+                        <Button Content="推論設定を保存" Command="{Binding SaveGeneralCommand}" HorizontalAlignment="Left" Background="#0369A1" />
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+
+            <TabItem Header="MCP接続">
+                <Grid Margin="14">
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="250"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                    <DockPanel Grid.Column="0" Margin="0,0,12,0">
+                        <StackPanel DockPanel.Dock="Top" Orientation="Horizontal">
+                            <Button Content="＋ stdio" Command="{Binding AddStdioCommand}" />
+                            <Button Content="＋ HTTP" Command="{Binding AddHttpCommand}" />
+                        </StackPanel>
+                        <Button DockPanel.Dock="Bottom" Content="選択を削除" Command="{Binding RemoveMcpCommand}" />
+                        <ListBox ItemsSource="{Binding McpServers}" SelectedItem="{Binding SelectedMcpServer}" Background="#0F172A" BorderBrush="#334155">
+                            <ListBox.ItemTemplate><DataTemplate><StackPanel Margin="4"><TextBlock Text="{Binding Name}" FontWeight="Bold"/><TextBlock Text="{Binding TransportLabel}" Foreground="{StaticResource MutedTextBrush}" FontSize="11"/></StackPanel></DataTemplate></ListBox.ItemTemplate>
+                        </ListBox>
+                    </DockPanel>
+                    <ScrollViewer Grid.Column="1" VerticalScrollBarVisibility="Auto">
+                        <StackPanel DataContext="{Binding SelectedMcpServer}" Margin="8">
+                            <TextBlock Text="接続プロファイル" FontSize="18" FontWeight="Bold" Foreground="{StaticResource AccentBrush}" />
+                            <CheckBox Content="有効" IsChecked="{Binding Enabled}" Margin="0,10,0,5" />
+                            <TextBlock Text="表示名"/><TextBox Text="{Binding Name}" Margin="0,3,0,8" />
+                            <TextBlock Text="Transport"/><TextBox Text="{Binding TransportLabel, Mode=OneWay}" IsReadOnly="True" Margin="0,3,0,8" />
+                            <TextBlock Text="stdio command"/><TextBox Text="{Binding Command}" Margin="0,3,0,8" />
+                            <TextBlock Text="引数（1行に1引数）"/><TextBox Text="{Binding ArgumentsText}" AcceptsReturn="True" MinHeight="55" Margin="0,3,0,8" />
+                            <TextBlock Text="作業ディレクトリ"/><TextBox Text="{Binding WorkingDirectory}" Margin="0,3,0,8" />
+                            <TextBlock Text="Streamable HTTP URL"/><TextBox Text="{Binding Url}" Margin="0,3,0,8" />
+                            <CheckBox Content="サーバー通知用の standalone GET を有効にする" IsChecked="{Binding EnableStandaloneGetStream}" Margin="0,0,0,8" />
+                            <CheckBox Content="HTTP本文をバッファして Content-Length を送信する" IsChecked="{Binding BufferHttpRequestBody}" Margin="0,0,0,8" />
+                            <TextBlock Text="Bearerトークンの環境変数名"/><TextBox Text="{Binding BearerTokenEnvironmentVariable}" Margin="0,3,0,8" />
+                            <TextBlock Text="環境変数（NAME=VALUE）"/><TextBox Text="{Binding EnvironmentText}" AcceptsReturn="True" MinHeight="45" Margin="0,3,0,8" />
+                            <TextBlock Text="HTTPヘッダー（NAME=VALUE）"/><TextBox Text="{Binding HeadersText}" AcceptsReturn="True" MinHeight="45" Margin="0,3,0,8" />
+                            <TextBlock Text="秘密の環境変数（入力後は資格情報マネージャーへ保存）"/><TextBox Text="{Binding SecretEnvironmentText}" AcceptsReturn="True" MinHeight="45" Margin="0,3,0,8" />
+                            <TextBlock Text="秘密のHTTPヘッダー（例: Authorization=Bearer ...）"/><TextBox Text="{Binding SecretHeadersText}" AcceptsReturn="True" MinHeight="45" Margin="0,3,0,8" />
+                            <TextBlock Text="{Binding SavedSecretsLabel}" Foreground="{StaticResource MutedTextBrush}" Margin="0,0,0,8" />
+                            <TextBlock Text="接続開始タイムアウト（秒）"/><TextBox Text="{Binding StartupTimeoutSeconds}" Width="100" HorizontalAlignment="Left" Margin="0,3,0,8" />
+                            <TextBlock Text="ツール実行タイムアウト（秒）"/><TextBox Text="{Binding TimeoutSeconds}" Width="100" HorizontalAlignment="Left" />
+                        </StackPanel>
+                    </ScrollViewer>
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Bottom" HorizontalAlignment="Right" Margin="8">
+                        <Button Content="保存" Command="{Binding DataContext.SaveMcpCommand, RelativeSource={RelativeSource AncestorType=Window}}" />
+                        <Button Content="接続テスト" Command="{Binding DataContext.TestMcpCommand, RelativeSource={RelativeSource AncestorType=Window}}" />
+                        <Button Content="接続" Command="{Binding DataContext.ConnectMcpCommand, RelativeSource={RelativeSource AncestorType=Window}}" Background="#0369A1" />
+                    </StackPanel>
+                </Grid>
+            </TabItem>
+
+            <TabItem Header="承認とプライバシー">
+                <StackPanel Margin="22">
+                    <TextBlock Text="記憶したツール承認" FontSize="18" FontWeight="Bold" Foreground="{StaticResource AccentBrush}" />
+                    <ListBox ItemsSource="{Binding ApprovalRules}" Height="180" Background="#0F172A" Margin="0,8" />
+                    <Button Content="承認ルールをすべて消去" Command="{Binding ClearApprovalsCommand}" HorizontalAlignment="Left" />
+                    <Separator Margin="0,20" />
+                    <TextBlock Text="ローカルデータ" FontSize="18" FontWeight="Bold" Foreground="{StaticResource AccentBrush}" />
+                    <TextBlock Text="保存先" Foreground="{StaticResource MutedTextBrush}" Margin="0,8,0,2"/><TextBox Text="{Binding DataDirectory, Mode=OneWay}" IsReadOnly="True" />
+                    <TextBlock Text="ログ" Foreground="{StaticResource MutedTextBrush}" Margin="0,8,0,2"/><TextBox Text="{Binding LogsDirectory, Mode=OneWay}" IsReadOnly="True" />
+                    <Button Content="チャット履歴をすべて削除" Click="ClearHistory_Click" HorizontalAlignment="Left" Margin="0,14,0,0" />
+                    <TextBlock Text="テレメトリやクラウドLLM送信は行いません。MCPサーバー自身の外部通信については、そのサーバーの仕様を確認してください。"
+                               TextWrapping="Wrap" Foreground="{StaticResource MutedTextBrush}" Margin="0,18,0,0" />
+                </StackPanel>
+            </TabItem>
+        </TabControl>
+    </DockPanel>
+</Window>

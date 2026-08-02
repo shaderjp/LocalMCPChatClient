@@ -1,0 +1,36 @@
+<Window x:Class="LocalMCPChatClient.App.SetupWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Local MCP Chat 初回セットアップ" Width="720" Height="610" ResizeMode="CanResize"
+        WindowStartupLocation="CenterScreen" Background="{StaticResource WindowBrush}" Foreground="{StaticResource TextBrush}">
+    <Grid Margin="28">
+        <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+        <StackPanel>
+            <TextBlock Text="Local MCP Chat を準備する" FontSize="26" FontWeight="Bold" Foreground="{StaticResource AccentBrush}" />
+            <TextBlock Text="モデルと推論ランタイムはGitには含まれません。必要なものだけ端末へダウンロードします。" TextWrapping="Wrap" Margin="0,8,0,20" Foreground="{StaticResource MutedTextBrush}" />
+        </StackPanel>
+        <Border Grid.Row="1" Background="{StaticResource PanelBrush}" CornerRadius="12" Padding="22">
+            <StackPanel>
+                <TextBlock Text="ハードウェア" FontWeight="Bold" />
+                <TextBlock Text="{Binding HardwareSummary}" TextWrapping="Wrap" Margin="0,5,0,18" />
+                <TextBlock Text="Gemma 4 モデル" FontWeight="Bold" />
+                <ComboBox ItemsSource="{Binding Models}" SelectedItem="{Binding SelectedModel}" DisplayMemberPath="DisplayName" Margin="0,5,0,15" />
+                <TextBlock Text="推論バックエンド" FontWeight="Bold" />
+                <ComboBox ItemsSource="{Binding Backends}" SelectedItem="{Binding SelectedBackend}" Margin="0,5,0,15" />
+                <CheckBox IsChecked="{Binding AcceptLicense}" Margin="3,6,0,16">
+                    <TextBlock TextWrapping="Wrap">Gemma 4のApache 2.0ライセンスと、llama.cppのライセンスを確認して同意します。</TextBlock>
+                </CheckBox>
+                <ProgressBar Value="{Binding ProgressValue}" Height="12" Maximum="100" />
+                <TextBlock Text="{Binding ProgressText}" TextWrapping="Wrap" Margin="0,8" Foreground="{StaticResource MutedTextBrush}" />
+            </StackPanel>
+        </Border>
+        <DockPanel Grid.Row="2" Margin="0,18,0,0">
+            <Button DockPanel.Dock="Left" Content="既存ファイルを使用" Click="ImportExisting_Click" />
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                <Button Content="後で設定" Click="Later_Click" />
+                <Button Content="中止" Command="{Binding CancelCommand}" IsEnabled="{Binding IsInstalling}" />
+                <Button Content="ダウンロードして開始" Command="{Binding InstallCommand}" Background="#0369A1" MinWidth="160" />
+            </StackPanel>
+        </DockPanel>
+    </Grid>
+</Window>

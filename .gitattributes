@@ -1,0 +1,9 @@
+* text=auto
+*.cs text eol=crlf
+*.xaml text eol=crlf
+*.ps1 text eol=crlf
+*.json text eol=lf
+*.yml text eol=lf
+*.md text eol=lf
+*.gguf binary
+*.zip binary
