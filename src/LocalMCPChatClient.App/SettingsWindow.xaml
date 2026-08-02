@@ -114,6 +114,11 @@
                         <TextBlock Text="推論設定、モデル登録、MCP接続、承認ルール、保存済みシークレットを初期状態へ戻します。チャット履歴と取得済みファイルは削除しません。"
                                    TextWrapping="Wrap" Foreground="{StaticResource MutedTextBrush}" Margin="0,8,0,8" />
                         <Button Content="すべての設定を初期化" Click="ResetSettings_Click" HorizontalAlignment="Left" Background="#991B1B" />
+                        <Separator Margin="0,20" />
+                        <TextBlock Text="ライセンスと第三者通知" FontSize="18" FontWeight="Bold" Foreground="{StaticResource AccentBrush}" />
+                        <TextBlock Text="LocalMCPChatClient、.NET/WPF、MCP C# SDK、SQLiteなど、配布物に含まれるソフトウェアのライセンスを表示します。"
+                                   TextWrapping="Wrap" Foreground="{StaticResource MutedTextBrush}" Margin="0,8,0,8" />
+                        <Button Content="ライセンス情報を表示" Click="ShowLicenses_Click" HorizontalAlignment="Left" />
                         <TextBlock Text="テレメトリやクラウドLLM送信は行いません。MCPサーバー自身の外部通信については、そのサーバーの仕様を確認してください。"
                                    TextWrapping="Wrap" Foreground="{StaticResource MutedTextBrush}" Margin="0,18,0,0" />
                     </StackPanel>

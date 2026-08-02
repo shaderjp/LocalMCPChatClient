@@ -1,0 +1,157 @@
+LocalMCPChatClient Third-Party Notices
+======================================
+
+Version: 0.1.1
+
+This product includes third-party software. The notices below are provided
+for attribution and informational purposes and do not modify the license
+terms of the applicable software.
+
+The LocalMCPChatClient source code is licensed under the MIT License. See the
+LICENSE file distributed with this product.
+
+
+1. .NET and Windows Desktop Runtime
+-----------------------------------
+
+This Windows self-contained application includes portions of the .NET runtime
+and Windows Desktop Runtime (WPF), version 9.0.18.
+
+Copyright (c) .NET Foundation and Contributors
+
+The .NET source code and most runtime binaries are licensed under the MIT
+License. On Windows, Microsoft identifies the following binary-specific terms:
+
+* The .NET Library License applies to coreclr.dll, the .NET runtime embedded
+  in a single-file executable, Microsoft.DiaSymReader.Native, and the WPF
+  binaries PresentationNative_cor3.dll, vcruntime140_cor3.dll and
+  wpfgfx_cor3.dll.
+* The Windows SDK License applies to D3DCompiler_47_cor3.dll used by WPF.
+* Other .NET binaries and files are licensed under the MIT License.
+
+Full and supporting notices distributed with this application:
+
+* licenses/DOTNET-LIBRARY-LICENSE.txt
+* licenses/DOTNET-RUNTIME-LICENSE.txt
+* licenses/DOTNET-RUNTIME-THIRD-PARTY-NOTICES.txt
+* licenses/WINDOWS-SDK-LICENSE.txt
+
+Authoritative license information:
+
+https://github.com/dotnet/core/blob/main/license-information.md
+https://github.com/dotnet/core/blob/main/license-information-windows.md
+https://learn.microsoft.com/en-us/legal/windows-sdk/license
+
+
+2. MIT-licensed libraries
+-------------------------
+
+The following libraries are distributed under the MIT License. A copy of the
+MIT License follows this component list.
+
+* CommunityToolkit.Mvvm 8.4.2
+  Copyright (c) .NET Foundation and Contributors. All rights reserved.
+  https://github.com/CommunityToolkit/dotnet
+
+* MdXaml 1.27.0
+  Copyright (c) 2010 Bevan Arps, 2020 whistyun
+  https://github.com/whistyun/MdXaml
+
+* MdXaml.Plugins 1.27.0
+  Copyright (c) 2022 whistyun
+  https://github.com/whistyun/MdXaml
+
+* AvalonEdit 6.3.0.90
+  Copyright (c) 2000-2023 AlphaSierraPapa for the SharpDevelop Team
+  https://github.com/icsharpcode/AvalonEdit
+
+* Microsoft.Data.Sqlite and Microsoft.Data.Sqlite.Core 10.0.10
+  Copyright (c) Microsoft Corporation. All rights reserved.
+  https://github.com/dotnet/efcore
+
+* Microsoft.Extensions.AI.Abstractions 10.8.3
+* Microsoft.Extensions.Caching.Abstractions 10.0.10
+* Microsoft.Extensions.Configuration packages 10.0.10
+* Microsoft.Extensions.DependencyInjection packages 10.0.10
+* Microsoft.Extensions.Diagnostics packages 10.0.10
+* Microsoft.Extensions.FileProviders packages 10.0.10
+* Microsoft.Extensions.FileSystemGlobbing 10.0.10
+* Microsoft.Extensions.Hosting packages 10.0.10
+* Microsoft.Extensions.Http 10.0.10
+* Microsoft.Extensions.Logging packages 10.0.10
+* Microsoft.Extensions.Options packages 10.0.10
+* Microsoft.Extensions.Primitives 10.0.10
+* System.Diagnostics.DiagnosticSource 10.0.10
+* System.Diagnostics.EventLog 10.0.10
+* System.IO.Pipelines 10.0.10
+* System.Memory 4.5.3
+* System.Net.ServerSentEvents 10.0.10
+* System.Text.Encodings.Web 10.0.10
+* System.Text.Json 10.0.10
+  Copyright (c) .NET Foundation and Contributors and/or Microsoft Corporation.
+  https://github.com/dotnet/runtime
+
+MIT License
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+
+3. Model Context Protocol C# SDK
+--------------------------------
+
+* ModelContextProtocol 2.0.0
+* ModelContextProtocol.Core 2.0.0
+
+Copyright (c) 2024-2026 Model Context Protocol a Series of LF Projects, LLC.
+
+The MCP project is undergoing a transition from MIT to Apache License 2.0.
+The exact upstream license and third-party notices used for version 2.0.0 are
+included with this application:
+
+* licenses/MCP-CSHARP-SDK-LICENSE.txt
+* licenses/MCP-CSHARP-SDK-THIRD-PARTY-NOTICES.txt
+
+Source: https://github.com/modelcontextprotocol/csharp-sdk/tree/v2.0.0
+
+
+4. SQLitePCLRaw
+---------------
+
+* SQLitePCLRaw.bundle_e_sqlite3 2.1.12
+* SQLitePCLRaw.core 2.1.12
+* SQLitePCLRaw.lib.e_sqlite3 2.1.12
+* SQLitePCLRaw.provider.e_sqlite3 2.1.12
+
+Copyright 2014-2024 SourceGear, LLC
+
+These packages are licensed under the Apache License, Version 2.0. A full copy
+is included at licenses/APACHE-2.0.txt.
+
+Source: https://github.com/ericsink/SQLitePCL.raw
+
+
+5. SQLite
+---------
+
+The native e_sqlite3 library contains SQLite. The SQLite project states that
+all SQLite source code is in the public domain and may be used for any purpose.
+
+SQLite is in the Public Domain.
+
+Source and authoritative notice: https://www.sqlite.org/copyright.html
