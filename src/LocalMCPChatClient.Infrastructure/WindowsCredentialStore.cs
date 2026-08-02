@@ -87,6 +87,44 @@ public sealed class WindowsCredentialStore : ISecretStore
         return Task.CompletedTask;
     }
 
+    public Task DeleteAllAsync(CancellationToken cancellationToken = default)
+    {
+        EnsureWindows();
+        cancellationToken.ThrowIfCancellationRequested();
+
+        if (!CredEnumerate(Prefix + "*", 0, out var count, out var credentialsPointer))
+        {
+            var error = Marshal.GetLastWin32Error();
+            if (error == ErrorNotFound) return Task.CompletedTask;
+            throw new Win32Exception(error, "Windows Credential Managerの列挙に失敗しました。");
+        }
+
+        try
+        {
+            for (var index = 0; index < count; index++)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                var credentialPointer = Marshal.ReadIntPtr(credentialsPointer, checked(index * IntPtr.Size));
+                var credential = Marshal.PtrToStructure<NativeCredential>(credentialPointer);
+                if (credential.Type != CredTypeGeneric ||
+                    !credential.TargetName.StartsWith(Prefix, StringComparison.Ordinal)) continue;
+
+                if (!CredDelete(credential.TargetName, CredTypeGeneric, 0))
+                {
+                    var error = Marshal.GetLastWin32Error();
+                    if (error != ErrorNotFound)
+                        throw new Win32Exception(error, "Windows Credential Managerからの一括削除に失敗しました。");
+                }
+            }
+        }
+        finally
+        {
+            CredFree(credentialsPointer);
+        }
+
+        return Task.CompletedTask;
+    }
+
     private static void EnsureWindows()
     {
         if (!OperatingSystem.IsWindows())
@@ -123,6 +161,10 @@ public sealed class WindowsCredentialStore : ISecretStore
     [DllImport("advapi32.dll", EntryPoint = "CredDeleteW", SetLastError = true, CharSet = CharSet.Unicode)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool CredDelete(string target, uint type, uint flags);
+
+    [DllImport("advapi32.dll", EntryPoint = "CredEnumerateW", SetLastError = true, CharSet = CharSet.Unicode)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool CredEnumerate(string filter, uint flags, out int count, out IntPtr credentials);
 
     [DllImport("advapi32.dll", EntryPoint = "CredFree")]
     private static extern void CredFree(IntPtr buffer);

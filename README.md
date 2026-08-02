@@ -2,7 +2,7 @@
 
 Gemma 4 E2B/E4Bをローカルで実行し、MCPツールを人間の承認付きで利用できるWindows向けチャットクライアントです。モデル推論、会話履歴、MCP設定は端末内に保存され、アプリからテレメトリやクラウドLLMへの送信は行いません。
 
-現在のバージョンは`0.1.0`です。変更内容は[CHANGELOG](CHANGELOG.md)を参照してください。
+現在のバージョンは`0.1.1`です。変更内容は[CHANGELOG](CHANGELOG.md)を参照してください。
 
 > [!WARNING]
 > MCPサーバーは、承認後にファイルやネットワークへアクセスする可能性があります。信頼できるサーバーだけを登録し、承認画面に表示されるツール名と引数を確認してください。
@@ -14,12 +14,22 @@ Gemma 4 E2B/E4Bをローカルで実行し、MCPツールを人間の承認付�
 - Auto / CPU / NVIDIA CUDA / Vulkan推論、生成停止、再生成、モデル切り替え
 - MCP C# SDKによるstdio / Streamable HTTP接続
 - Tool Callの引数検証、「今回のみ許可」「常に許可」「拒否」と実行結果表示
-- SQLiteによる会話履歴とMarkdown対応チャット表示
+- SQLiteによる会話履歴、Markdown対応チャット表示、会話単位のMarkdown保存
 - Windows Credential Managerを利用したMCP資格情報の保存
+- 推論・モデル登録・MCP・承認・資格情報をまとめて初期化する設定リセット
 - 再開可能ダウンロード、空き容量確認、SHA-256検証、既存ファイルのインポート
 - self-contained `win-x64` Portable発行
 
 初期版では、テキストチャットとMCP Toolsを対象とします。クラウドLLM、マルチモーダル入力、MCP Resources / Prompts、旧SSE transport、OAuth、非Windows GUIは対象外です。
+
+## 画面とMCP連携例
+
+| LocalMCPChatClient | 接続先のMCPサーバーアプリ |
+|:---:|:---:|
+| ![Gemma 4とMCPツールについて会話しているLocalMCPChatClientのメイン画面](docs/images/image001.png) | ![MCP Serverパネルを開いたD3D12LookDevPTWinUI3](docs/images/image004.png) |
+| ローカルGemmaが接続済みToolsを理解し、日本語で説明している画面 | [D3D12LookDevPTWinUI3](https://github.com/shaderjp/D3D12LookDevPTWinUI3)のレンダラー画面。下部のMCP Serverパネルからローカルエンドポイントを起動する |
+
+この例では、LocalMCPChatClientからD3D12/DXRレンダラーへ接続し、利用可能な機能の確認や露出変更をチャットで行っています。接続からTool Call確認までの手順は[D3D12LookDevPTWinUI3との連携例](docs/d3d12lookdevpt-integration.md)を参照してください。4枚目の画面は別リポジトリのMCPサーバーアプリであり、本アプリや配布物には含まれません。
 
 ## すぐに使う
 
@@ -27,8 +37,8 @@ GitHub Releaseでは次の2形式を配布します。どちらも.NETランタ�
 
 | 成果物 | 用途 |
 |---|---|
-| `LocalMCPChatClient-0.1.0-win-x64.zip` | 展開して使う通常のPortable版。構成ファイルを確認しやすい |
-| `LocalMCPChatClient-0.1.0-win-x64.exe` | アプリ本体を1ファイルにまとめたself-contained版 |
+| `LocalMCPChatClient-0.1.1-win-x64.zip` | 展開して使う通常のPortable版。構成ファイルを確認しやすい |
+| `LocalMCPChatClient-0.1.1-win-x64.exe` | アプリ本体を1ファイルにまとめたself-contained版 |
 
 SHA-256ファイルも各成果物と一緒に配布します。単体EXEにはモデルと`llama-server`は含まれず、ネイティブ依存関係は実行時に一時ディレクトリへ展開される場合があります。
 
@@ -78,7 +88,8 @@ Visual StudioとCLIの詳しい手順は[開発ガイド](docs/development.md)�
 |---|---|---|
 | [はじめに](docs/getting-started.md) | 利用者 | インストール、初回セットアップ、最初のチャット |
 | [操作ガイド](docs/user-guide.md) | 利用者 | 画面、推論設定、履歴、ツール承認 |
-| [MCP設定ガイド](docs/mcp-configuration.md) | 利用者・MCP開発者 | stdio / HTTP設定、秘密情報、D3D12設定例 |
+| [MCP設定ガイド](docs/mcp-configuration.md) | 利用者・MCP開発者 | stdio / HTTP設定、秘密情報、接続項目 |
+| [D3D12LookDevPTWinUI3との連携例](docs/d3d12lookdevpt-integration.md) | 利用者 | MCPサーバーの起動、接続、チャットからのレンダラー操作 |
 | [トラブルシューティング](docs/troubleshooting.md) | 利用者・開発者 | 推論、モデル、MCP、設定、ログの確認方法 |
 | [開発ガイド](docs/development.md) | 開発者 | Visual Studio、ビルド、テスト、発行、リポジトリ規約 |
 | [リリース手順](docs/releasing.md) | メンテナー | バージョン更新、成果物検証、タグとGitHub Release |

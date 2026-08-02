@@ -7,14 +7,14 @@ LocalMCPChatClientは、Gitタグとアプリのバージョンが一致した�
 バージョンの情報源はリポジトリ直下の`Directory.Build.props`です。
 
 ```xml
-<Version>0.1.0</Version>
-<VersionPrefix>0.1.0</VersionPrefix>
-<AssemblyVersion>0.1.0.0</AssemblyVersion>
-<FileVersion>0.1.0.0</FileVersion>
-<InformationalVersion>0.1.0</InformationalVersion>
+<Version>0.1.1</Version>
+<VersionPrefix>0.1.1</VersionPrefix>
+<AssemblyVersion>0.1.1.0</AssemblyVersion>
+<FileVersion>0.1.1.0</FileVersion>
+<InformationalVersion>0.1.1</InformationalVersion>
 ```
 
-リリースタグは`v<Version>`形式にします。例えばバージョン`0.1.0`のタグは`v0.1.0`です。タグと`Directory.Build.props`の値が一致しない場合、CIはReleaseを作成せず失敗します。
+リリースタグは`v<Version>`形式にします。例えばバージョン`0.1.1`のタグは`v0.1.1`です。タグと`Directory.Build.props`の値が一致しない場合、CIはReleaseを作成せず失敗します。
 
 ## Release成果物
 
@@ -56,8 +56,8 @@ dotnet publish src/LocalMCPChatClient.App/LocalMCPChatClient.App.csproj `
 検証済みコミットでタグを作成してpushします。
 
 ```powershell
-git tag -a v0.1.0 -m "LocalMCPChatClient 0.1.0"
-git push origin v0.1.0
+git tag -a v0.1.1 -m "LocalMCPChatClient 0.1.1"
+git push origin v0.1.1
 ```
 
 タグのpushでCIが実行されます。build、test、2形式のpublish、バージョン検証、ハッシュ作成が成功すると、Releaseが自動公開されます。

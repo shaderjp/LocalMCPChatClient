@@ -19,7 +19,7 @@ Portable版はself-containedなので、実行するPCへ.NETランタイムを�
 ダウンロード後は、同名の`.sha256`ファイルを使って改ざんや破損がないことを確認できます。
 
 ```powershell
-Get-FileHash .\LocalMCPChatClient-0.1.0-win-x64.exe -Algorithm SHA256
+Get-FileHash .\LocalMCPChatClient-0.1.1-win-x64.exe -Algorithm SHA256
 ```
 
 ### ソースから起動する
@@ -78,7 +78,9 @@ Get-FileHash .\LocalMCPChatClient-0.1.0-win-x64.exe -Algorithm SHA256
 
 ## 5. MCPを追加する
 
-MCPサーバーを使う場合は、メイン画面の「設定」から「MCP」タブを開きます。詳しい入力方法とD3D12 Lookdev PTの設定例は[MCP設定ガイド](mcp-configuration.md)を参照してください。
+MCPサーバーを使う場合は、メイン画面の「設定」から「MCP接続」タブを開きます。一般的な入力方法は[MCP設定ガイド](mcp-configuration.md)を参照してください。
+
+D3D12/DXRレンダラーをチャットから操作するサンプルを試す場合は、[D3D12LookDevPTWinUI3との連携例](d3d12lookdevpt-integration.md)に、サーバー側の起動からTool Call結果の確認までを掲載しています。
 
 ## オフライン利用
 
@@ -88,4 +90,5 @@ MCPサーバーを使う場合は、メイン画面の「設定」から「MCP�
 
 - 日常的な操作: [操作ガイド](user-guide.md)
 - MCPの接続: [MCP設定ガイド](mcp-configuration.md)
+- 実際のMCP連携例: [D3D12LookDevPTWinUI3との連携例](d3d12lookdevpt-integration.md)
 - 問題が起きた場合: [トラブルシューティング](troubleshooting.md)

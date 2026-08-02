@@ -30,7 +30,7 @@
   },
   "d3d12LookdevPt": {
     "id": "d3d12_lookdev_pt",
-    "name": "D3D12 Lookdev PT",
+    "name": "D3D12LookDevPTWinUI3",
     "enabled": true,
     "transport": "streamableHttp",
     "url": "http://127.0.0.1:8777/mcp",
@@ -38,7 +38,7 @@
       { "name": "MCP-Protocol-Version", "value": "2025-11-25" }
     ],
     "bearerTokenEnvironmentVariable": "D3D12LOOKDEVPT_MCP_TOKEN",
-    "enableStandaloneGetStream": true,
+    "enableStandaloneGetStream": false,
     "bufferHttpRequestBody": false,
     "startupTimeoutSeconds": 10,
     "timeoutSeconds": 120

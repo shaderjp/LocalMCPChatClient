@@ -99,18 +99,25 @@
             </TabItem>
 
             <TabItem Header="承認とプライバシー">
-                <StackPanel Margin="22">
-                    <TextBlock Text="記憶したツール承認" FontSize="18" FontWeight="Bold" Foreground="{StaticResource AccentBrush}" />
-                    <ListBox ItemsSource="{Binding ApprovalRules}" Height="180" Background="#0F172A" Margin="0,8" />
-                    <Button Content="承認ルールをすべて消去" Command="{Binding ClearApprovalsCommand}" HorizontalAlignment="Left" />
-                    <Separator Margin="0,20" />
-                    <TextBlock Text="ローカルデータ" FontSize="18" FontWeight="Bold" Foreground="{StaticResource AccentBrush}" />
-                    <TextBlock Text="保存先" Foreground="{StaticResource MutedTextBrush}" Margin="0,8,0,2"/><TextBox Text="{Binding DataDirectory, Mode=OneWay}" IsReadOnly="True" />
-                    <TextBlock Text="ログ" Foreground="{StaticResource MutedTextBrush}" Margin="0,8,0,2"/><TextBox Text="{Binding LogsDirectory, Mode=OneWay}" IsReadOnly="True" />
-                    <Button Content="チャット履歴をすべて削除" Click="ClearHistory_Click" HorizontalAlignment="Left" Margin="0,14,0,0" />
-                    <TextBlock Text="テレメトリやクラウドLLM送信は行いません。MCPサーバー自身の外部通信については、そのサーバーの仕様を確認してください。"
-                               TextWrapping="Wrap" Foreground="{StaticResource MutedTextBrush}" Margin="0,18,0,0" />
-                </StackPanel>
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel Margin="22">
+                        <TextBlock Text="記憶したツール承認" FontSize="18" FontWeight="Bold" Foreground="{StaticResource AccentBrush}" />
+                        <ListBox ItemsSource="{Binding ApprovalRules}" Height="180" Background="#0F172A" Margin="0,8" />
+                        <Button Content="承認ルールをすべて消去" Command="{Binding ClearApprovalsCommand}" HorizontalAlignment="Left" />
+                        <Separator Margin="0,20" />
+                        <TextBlock Text="ローカルデータ" FontSize="18" FontWeight="Bold" Foreground="{StaticResource AccentBrush}" />
+                        <TextBlock Text="保存先" Foreground="{StaticResource MutedTextBrush}" Margin="0,8,0,2"/><TextBox Text="{Binding DataDirectory, Mode=OneWay}" IsReadOnly="True" />
+                        <TextBlock Text="ログ" Foreground="{StaticResource MutedTextBrush}" Margin="0,8,0,2"/><TextBox Text="{Binding LogsDirectory, Mode=OneWay}" IsReadOnly="True" />
+                        <Button Content="チャット履歴をすべて削除" Click="ClearHistory_Click" HorizontalAlignment="Left" Margin="0,14,0,0" />
+                        <Separator Margin="0,20" />
+                        <TextBlock Text="設定のリセット" FontSize="18" FontWeight="Bold" Foreground="{StaticResource AccentBrush}" />
+                        <TextBlock Text="推論設定、モデル登録、MCP接続、承認ルール、保存済みシークレットを初期状態へ戻します。チャット履歴と取得済みファイルは削除しません。"
+                                   TextWrapping="Wrap" Foreground="{StaticResource MutedTextBrush}" Margin="0,8,0,8" />
+                        <Button Content="すべての設定を初期化" Click="ResetSettings_Click" HorizontalAlignment="Left" Background="#991B1B" />
+                        <TextBlock Text="テレメトリやクラウドLLM送信は行いません。MCPサーバー自身の外部通信については、そのサーバーの仕様を確認してください。"
+                                   TextWrapping="Wrap" Foreground="{StaticResource MutedTextBrush}" Margin="0,18,0,0" />
+                    </StackPanel>
+                </ScrollViewer>
             </TabItem>
         </TabControl>
     </DockPanel>

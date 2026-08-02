@@ -9,6 +9,7 @@ namespace LocalMCPChatClient.App.ViewModels;
 
 public sealed partial class MainViewModel(
     IConversationStore conversationStore,
+    IConversationExporter conversationExporter,
     ISettingsStore settingsStore,
     IAgentChatService agentChatService,
     IMcpConnectionManager mcpManager,
@@ -173,6 +174,13 @@ public sealed partial class MainViewModel(
 
     [RelayCommand]
     private void OpenSettings() => SettingsRequested?.Invoke(this, EventArgs.Empty);
+
+    public async Task ExportSelectedConversationAsync(string destinationPath)
+    {
+        if (SelectedConversation is null) throw new InvalidOperationException("保存するチャットを選択してください。");
+        await conversationExporter.ExportMarkdownAsync(SelectedConversation.Id, destinationPath);
+        StatusText = "Markdownを保存しました: " + destinationPath;
+    }
 
     partial void OnInputTextChanged(string value) => SendCommand.NotifyCanExecuteChanged();
 

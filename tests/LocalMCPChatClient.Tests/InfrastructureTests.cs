@@ -139,6 +139,37 @@ public sealed class SettingsAndApprovalTests : IDisposable
         Assert.NotEmpty(await File.ReadAllTextAsync(_paths.SettingsPath));
     }
 
+    [Fact]
+    public async Task Reset_replaces_all_settings_with_defaults()
+    {
+        var store = new JsonSettingsStore(_paths);
+        await store.SaveAsync(JsonSettingsStore.CreateDefaults() with
+        {
+            SetupCompleted = true,
+            InferenceMode = InferenceMode.Cuda,
+            ContextSize = 16384,
+            CustomRuntimePath = "C:\\custom\\llama-server.exe",
+            ModelDirectory = "C:\\custom\\models",
+            McpServers = [new McpServerProfile { Id = "server", Name = "Saved MCP" }],
+            ApprovalRules = [new ToolApprovalRule("server", "tool", ApprovalDecision.Allow)]
+        });
+
+        var reset = await store.ResetAsync();
+
+        Assert.False(reset.SetupCompleted);
+        Assert.Equal(InferenceMode.Auto, reset.InferenceMode);
+        Assert.Equal(8192, reset.ContextSize);
+        Assert.Null(reset.CustomRuntimePath);
+        Assert.Null(reset.ModelDirectory);
+        Assert.Empty(reset.McpServers);
+        Assert.Empty(reset.ApprovalRules);
+        Assert.Equal(2, reset.Models.Count);
+        Assert.All(reset.Models, model => Assert.Null(model.LocalPath));
+        var json = await File.ReadAllTextAsync(_paths.SettingsPath);
+        Assert.DoesNotContain("Saved MCP", json);
+        Assert.DoesNotContain("C:\\custom", json);
+    }
+
     public void Dispose() => _paths.Dispose();
 }
 
@@ -180,6 +211,57 @@ public sealed class ConversationStoreTests : IDisposable
         Assert.Equal("again", text);
         var remaining = await store.GetMessagesAsync(conversation.Id);
         Assert.Equal([ChatRole.User, ChatRole.Assistant], remaining.Select(item => item.Role));
+    }
+
+    public void Dispose() => _paths.Dispose();
+}
+
+public sealed class MarkdownConversationExporterTests : IDisposable
+{
+    private readonly TestPaths _paths = new();
+
+    [Fact]
+    public async Task Exports_messages_tool_calls_and_results_as_utf8_markdown()
+    {
+        var store = new SqliteConversationStore(_paths);
+        var conversation = await store.CreateAsync("エクスポート確認", "gemma-4-e2b-it-q4");
+        var now = DateTimeOffset.Parse("2026-08-02T12:34:56Z");
+        await store.AppendMessageAsync(new ChatMessage(Guid.NewGuid(), conversation.Id, ChatRole.User,
+            "## 質問\n東京の天気は？", now));
+        await store.AppendMessageAsync(new ChatMessage(Guid.NewGuid(), conversation.Id, ChatRole.Assistant,
+            string.Empty, now.AddSeconds(1), ToolCallsJson: "[{\"id\":\"call-1\",\"function\":{\"name\":\"weather__forecast\",\"arguments\":\"{\\\"city\\\":\\\"東京\\\"}\"}}]"));
+        await store.AppendMessageAsync(new ChatMessage(Guid.NewGuid(), conversation.Id, ChatRole.Tool,
+            "取得に失敗しました。", now.AddSeconds(2), "call-1", "weather__forecast", IsError: true));
+        var destination = Path.Combine(_paths.DataDirectory, "exports", "chat.md");
+
+        await new MarkdownConversationExporter(store).ExportMarkdownAsync(conversation.Id, destination);
+
+        var bytes = await File.ReadAllBytesAsync(destination);
+        Assert.False(bytes.AsSpan().StartsWith(new byte[] { 0xEF, 0xBB, 0xBF }));
+        var markdown = await File.ReadAllTextAsync(destination);
+        Assert.Contains("# エクスポート確認", markdown);
+        Assert.Contains("- モデル: `gemma-4-e2b-it-q4`", markdown);
+        Assert.Contains("## あなた", markdown);
+        Assert.Contains("## Gemma", markdown);
+        Assert.Contains("### Tool Calls", markdown);
+        Assert.Contains("weather__forecast", markdown);
+        Assert.Contains("## ツール: weather__forecast", markdown);
+        Assert.Contains("**状態:** 失敗", markdown);
+        Assert.Contains("**Tool Call ID:** `call-1`", markdown);
+        Assert.Contains("取得に失敗しました。", markdown);
+    }
+
+    [Fact]
+    public async Task Rejects_an_unknown_conversation()
+    {
+        var store = new SqliteConversationStore(_paths);
+        var destination = Path.Combine(_paths.DataDirectory, "missing.md");
+
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            new MarkdownConversationExporter(store).ExportMarkdownAsync(Guid.NewGuid(), destination));
+
+        Assert.Contains("見つかりません", exception.Message);
+        Assert.False(File.Exists(destination));
     }
 
     public void Dispose() => _paths.Dispose();
