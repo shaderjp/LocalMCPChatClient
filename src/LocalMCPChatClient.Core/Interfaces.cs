@@ -96,6 +96,14 @@ public interface IArtifactInstaller
     bool IsInstalled(ArtifactDescriptor artifact);
 }
 
+public interface IInferenceBenchmarkService
+{
+    Task<IReadOnlyList<InferenceBenchmarkResult>> RunAsync(
+        ModelProfile model,
+        IProgress<BenchmarkProgress>? progress = null,
+        CancellationToken cancellationToken = default);
+}
+
 public interface IAgentChatService
 {
     IAsyncEnumerable<AgentEvent> RunTurnAsync(Guid conversationId, string text, InferenceProfile profile, ModelProfile model, CancellationToken cancellationToken = default);

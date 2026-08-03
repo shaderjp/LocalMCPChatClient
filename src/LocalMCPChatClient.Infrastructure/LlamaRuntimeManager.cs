@@ -21,6 +21,9 @@ public sealed class LlamaRuntimeManager(
     private string? _pidFile;
     private InferenceProfile? _activeProfile;
     private readonly ConcurrentQueue<string> _recentRuntimeLines = new();
+    private readonly ConcurrentDictionary<string, string> _runtimeHelp = new(StringComparer.OrdinalIgnoreCase);
+    private readonly ConcurrentDictionary<string, bool> _runtimeProbes = new(StringComparer.OrdinalIgnoreCase);
+    private Task<HardwareCapabilities>? _hardwareDetection;
     private int _disposed;
     public RuntimeState State { get; private set; } = RuntimeState.Stopped;
     public event EventHandler<RuntimeState>? StateChanged;
@@ -42,9 +45,10 @@ public sealed class LlamaRuntimeManager(
             await StopCoreAsync(cancellationToken).ConfigureAwait(false);
             await RecoverOwnedProcessCoreAsync(cancellationToken).ConfigureAwait(false);
 
+            var hardware = await DetectHardwareAsync(cancellationToken).ConfigureAwait(false);
             var backends = profile.Mode == InferenceMode.Auto
-                ? new[] { RuntimeBackend.Cuda, RuntimeBackend.Vulkan, RuntimeBackend.Cpu }
-                : new[] { ToBackend(profile.Mode) };
+                ? await ResolveAutoBackendsAsync(profile, model, modelPath, hardware, cancellationToken).ConfigureAwait(false)
+                : [ToBackend(profile.Mode)];
             var failures = new List<string>();
 
             foreach (var backend in backends)
@@ -56,10 +60,15 @@ public sealed class LlamaRuntimeManager(
                     failures.Add($"{backend}: ランタイム未導入");
                     continue;
                 }
+                if (!await CanUseRuntimeAsync(executable, backend, cancellationToken).ConfigureAwait(false))
+                {
+                    failures.Add($"{backend}: 対応デバイスを確認できません");
+                    continue;
+                }
 
                 try
                 {
-                    var ready = await StartOneAsync(executable, backend, profile, modelPath, cancellationToken).ConfigureAwait(false);
+                    var ready = await StartOneAsync(executable, backend, profile, modelPath, hardware, cancellationToken).ConfigureAwait(false);
                     if (profile.Mode == InferenceMode.Auto)
                     {
                         try
@@ -120,13 +129,8 @@ public sealed class LlamaRuntimeManager(
 
     public async Task<HardwareCapabilities> DetectHardwareAsync(CancellationToken cancellationToken = default)
     {
-        var hasNvidia = await CanExecuteAsync("nvidia-smi.exe", "--query-gpu=name", cancellationToken).ConfigureAwait(false);
-        var hasVulkan = File.Exists(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "vulkan-1.dll"));
-        string summary;
-        if (hasNvidia) summary = "NVIDIA GPUを検出しました。CUDAを推奨します。";
-        else if (hasVulkan) summary = "Vulkanランタイムを検出しました。Vulkanを推奨します。";
-        else summary = "対応GPUを確認できませんでした。CPU推論を使用できます。";
-        return new HardwareCapabilities(hasNvidia, hasVulkan, summary);
+        var task = _hardwareDetection ??= InferenceOptimization.DetectHardwareAsync(CancellationToken.None);
+        return await task.WaitAsync(cancellationToken).ConfigureAwait(false);
     }
 
     private async Task<RuntimeState> StartOneAsync(
@@ -134,6 +138,7 @@ public sealed class LlamaRuntimeManager(
         RuntimeBackend backend,
         InferenceProfile profile,
         string modelPath,
+        HardwareCapabilities hardware,
         CancellationToken cancellationToken)
     {
         var port = GetFreeTcpPort();
@@ -157,9 +162,26 @@ public sealed class LlamaRuntimeManager(
         AddArgument(startInfo, "--api-key", token);
         AddArgument(startInfo, "--ctx-size", profile.ContextSize.ToString());
         AddArgument(startInfo, "--n-predict", profile.MaxOutputTokens.ToString());
-        AddArgument(startInfo, "--n-gpu-layers", backend == RuntimeBackend.Cpu ? "0" : "999");
-        startInfo.ArgumentList.Add("--jinja");
-        startInfo.ArgumentList.Add("--no-webui");
+        var help = await GetRuntimeHelpAsync(executable, cancellationToken).ConfigureAwait(false);
+        var physicalCores = Math.Max(1, hardware.PhysicalCoreCount);
+        AddArgumentIfSupported(startInfo, help, "--n-gpu-layers", backend == RuntimeBackend.Cpu ? "0" : help.Contains("'all'", StringComparison.OrdinalIgnoreCase) ? "all" : "999");
+        AddArgumentIfSupported(startInfo, help, "--threads", physicalCores.ToString());
+        AddArgumentIfSupported(startInfo, help, "--threads-batch", physicalCores.ToString());
+        AddArgumentIfSupported(startInfo, help, "--batch-size", "2048");
+        AddArgumentIfSupported(startInfo, help, "--ubatch-size", "512");
+        AddArgumentIfSupported(startInfo, help, "--flash-attn", "auto");
+        AddArgumentIfSupported(startInfo, help, "--cache-type-k", "f16");
+        AddArgumentIfSupported(startInfo, help, "--cache-type-v", "f16");
+        AddArgumentIfSupported(startInfo, help, "--parallel", "1");
+        if (backend != RuntimeBackend.Cpu)
+        {
+            AddArgumentIfSupported(startInfo, help, "--fit", "on");
+            AddArgumentIfSupported(startInfo, help, "--fit-target", "1024");
+        }
+        AddFlagIfSupported(startInfo, help, "--cache-prompt");
+        AddFlagIfSupported(startInfo, help, "--metrics");
+        AddFlagIfSupported(startInfo, help, "--jinja");
+        AddFlagIfSupported(startInfo, help, "--no-webui");
 
         _process = new Process { StartInfo = startInfo, EnableRaisingEvents = true };
         _process.OutputDataReceived += (_, args) => LogRuntimeLine(args.Data, false);
@@ -267,6 +289,75 @@ public sealed class LlamaRuntimeManager(
             .FirstOrDefault(path => path.Contains(backend.ToString(), StringComparison.OrdinalIgnoreCase));
     }
 
+    private async Task<IReadOnlyList<RuntimeBackend>> ResolveAutoBackendsAsync(
+        InferenceProfile profile,
+        ModelProfile model,
+        string modelPath,
+        HardwareCapabilities hardware,
+        CancellationToken cancellationToken)
+    {
+        if (!string.IsNullOrWhiteSpace(profile.CustomRuntimePath) && File.Exists(profile.CustomRuntimePath))
+        {
+            var output = await InferenceOptimization.RunAndCaptureAsync(
+                profile.CustomRuntimePath, ["--list-devices"], TimeSpan.FromSeconds(5), cancellationToken).ConfigureAwait(false);
+            if (output.Output.Contains("CUDA", StringComparison.OrdinalIgnoreCase)) return [RuntimeBackend.Cuda];
+            if (output.Output.Contains("Vulkan", StringComparison.OrdinalIgnoreCase)) return [RuntimeBackend.Vulkan];
+            return [RuntimeBackend.Cpu];
+        }
+
+        var preferred = new List<RuntimeBackend>();
+        var settings = await settingsStore.LoadAsync(cancellationToken).ConfigureAwait(false);
+        foreach (var result in settings.InferenceBenchmarks
+                     .Where(result => result.ModelId == model.Id)
+                     .OrderByDescending(result => result.PromptTokensPerSecond)
+                     .ThenByDescending(result => result.GeneratedTokensPerSecond))
+        {
+            var executable = ResolveRuntimePath(null, result.Backend);
+            if (executable is null) continue;
+            var build = await GetRuntimeBuildAsync(executable, cancellationToken).ConfigureAwait(false);
+            var fingerprint = InferenceOptimization.CreateBenchmarkFingerprint(model, modelPath, executable, result.Backend, hardware, build);
+            if (string.Equals(result.Fingerprint, fingerprint, StringComparison.OrdinalIgnoreCase))
+                AddDistinct(preferred, result.Backend);
+        }
+
+        return InferenceOptimization.CreateBackendOrder(hardware, preferred);
+    }
+
+    private async Task<bool> CanUseRuntimeAsync(string executable, RuntimeBackend backend, CancellationToken cancellationToken)
+    {
+        if (backend == RuntimeBackend.Cpu) return File.Exists(executable);
+        var key = $"{Path.GetFullPath(executable)}|{backend}";
+        if (_runtimeProbes.TryGetValue(key, out var cached)) return cached;
+        var result = await InferenceOptimization.RunAndCaptureAsync(
+            executable, ["--list-devices"], TimeSpan.FromSeconds(8), cancellationToken).ConfigureAwait(false);
+        var available = result.ExitCode == 0 && result.Output.Contains(backend.ToString(), StringComparison.OrdinalIgnoreCase);
+        _runtimeProbes[key] = available;
+        return available;
+    }
+
+    private async Task<string> GetRuntimeHelpAsync(string executable, CancellationToken cancellationToken)
+    {
+        var path = Path.GetFullPath(executable);
+        if (_runtimeHelp.TryGetValue(path, out var cached)) return cached;
+        var result = await InferenceOptimization.RunAndCaptureAsync(
+            path, ["--help"], TimeSpan.FromSeconds(8), cancellationToken).ConfigureAwait(false);
+        _runtimeHelp[path] = result.Output;
+        return result.Output;
+    }
+
+    private static async Task<string> GetRuntimeBuildAsync(string executable, CancellationToken cancellationToken)
+    {
+        var result = await InferenceOptimization.RunAndCaptureAsync(
+            executable, ["--version"], TimeSpan.FromSeconds(5), cancellationToken).ConfigureAwait(false);
+        var firstLine = result.Output.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries).FirstOrDefault();
+        return string.IsNullOrWhiteSpace(firstLine) ? File.GetLastWriteTimeUtc(executable).Ticks.ToString() : firstLine.Trim();
+    }
+
+    private static void AddDistinct(List<RuntimeBackend> backends, RuntimeBackend backend)
+    {
+        if (!backends.Contains(backend)) backends.Add(backend);
+    }
+
     private static RuntimeBackend ToBackend(InferenceMode mode) => mode switch
     {
         InferenceMode.Cpu => RuntimeBackend.Cpu,
@@ -289,6 +380,16 @@ public sealed class LlamaRuntimeManager(
         info.ArgumentList.Add(value);
     }
 
+    private static void AddArgumentIfSupported(ProcessStartInfo info, string help, string name, string value)
+    {
+        if (help.Contains(name, StringComparison.Ordinal)) AddArgument(info, name, value);
+    }
+
+    private static void AddFlagIfSupported(ProcessStartInfo info, string help, string name)
+    {
+        if (help.Contains(name, StringComparison.Ordinal)) info.ArgumentList.Add(name);
+    }
+
     private void LogRuntimeLine(string? line, bool standardError)
     {
         if (string.IsNullOrWhiteSpace(line)) return;
@@ -308,26 +409,6 @@ public sealed class LlamaRuntimeManager(
             output.Contains("model load failed", StringComparison.OrdinalIgnoreCase))
             return new InvalidOperationException("モデルを読み込めませんでした。GGUFが破損している可能性があるため、再取得または再インポートしてください。");
         return new InvalidOperationException($"llama-serverが終了しました (exit code {exitCode})。モデルと選択したバックエンドを確認してください。");
-    }
-
-    private static async Task<bool> CanExecuteAsync(string fileName, string arguments, CancellationToken cancellationToken)
-    {
-        try
-        {
-            using var process = Process.Start(new ProcessStartInfo(fileName, arguments)
-            {
-                UseShellExecute = false,
-                CreateNoWindow = true,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true
-            });
-            if (process is null) return false;
-            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            timeout.CancelAfter(TimeSpan.FromSeconds(3));
-            await process.WaitForExitAsync(timeout.Token).ConfigureAwait(false);
-            return process.ExitCode == 0;
-        }
-        catch { return false; }
     }
 
     private void SetState(RuntimeState state)

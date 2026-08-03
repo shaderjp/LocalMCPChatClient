@@ -27,6 +27,7 @@ public sealed partial class ChatItemViewModel : ObservableObject
     };
 
     [ObservableProperty] private string _content;
+    [ObservableProperty] private bool _isStreaming;
 }
 
 public sealed record ConversationItemViewModel(Guid Id, string Title, DateTimeOffset UpdatedAt)

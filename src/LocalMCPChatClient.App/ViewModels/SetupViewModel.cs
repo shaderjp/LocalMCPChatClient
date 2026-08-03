@@ -63,13 +63,7 @@ public sealed partial class SetupViewModel(
             {
                 SetupCompleted = true,
                 SelectedModelId = SelectedModel.Id,
-                InferenceMode = SelectedBackend switch
-                {
-                    RuntimeBackend.Cpu => InferenceMode.Cpu,
-                    RuntimeBackend.Cuda => InferenceMode.Cuda,
-                    RuntimeBackend.Vulkan => InferenceMode.Vulkan,
-                    _ => InferenceMode.Auto
-                },
+                InferenceMode = InferenceMode.Auto,
                 ModelDirectory = currentSettings.ModelDirectory ?? paths.ModelsDirectory,
                 Models = settings.Models.Select(item => item.Id == SelectedModel.Id ? item with { LocalPath = installedModelPath } : item).ToList()
             }, _cancellation.Token);

@@ -1,4 +1,5 @@
 using System.Collections.Specialized;
+using System.ComponentModel;
 using System.IO;
 using System.Windows;
 using LocalMCPChatClient.App.ViewModels;
@@ -22,13 +23,26 @@ public partial class MainWindow : Window
     }
 
     private void OnMessagesChanged(object? sender, NotifyCollectionChangedEventArgs e)
-        => Dispatcher.BeginInvoke(ConversationScroll.ScrollToEnd);
+    {
+        if (e.OldItems is not null)
+            foreach (ChatItemViewModel item in e.OldItems) item.PropertyChanged -= OnMessagePropertyChanged;
+        if (e.NewItems is not null)
+            foreach (ChatItemViewModel item in e.NewItems) item.PropertyChanged += OnMessagePropertyChanged;
+        Dispatcher.BeginInvoke(ConversationScroll.ScrollToEnd);
+    }
+
+    private void OnMessagePropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(ChatItemViewModel.Content))
+            Dispatcher.BeginInvoke(ConversationScroll.ScrollToEnd);
+    }
 
     private async void OnSettingsRequested(object? sender, EventArgs e)
     {
         var window = new SettingsWindow(_services.GetRequiredService<SettingsViewModel>()) { Owner = this };
         window.ShowDialog();
         await _viewModel.InitializeAsync();
+        _ = _viewModel.StartBackgroundInitializationAsync();
     }
 
     private async void ExportMarkdown_Click(object sender, RoutedEventArgs e)

@@ -80,6 +80,27 @@ public sealed class SettingsAndApprovalTests : IDisposable
             Assert.Equal(64, model.Sha256?.Length);
             Assert.True(model.Size > 1_000_000_000);
         });
+        Assert.Equal(2, settings.SchemaVersion);
+        Assert.True(settings.PreloadModel);
+        Assert.Empty(settings.InferenceBenchmarks);
+    }
+
+    [Fact]
+    public async Task Schema_one_settings_preserve_an_explicit_backend_when_normalized()
+    {
+        var store = new JsonSettingsStore(_paths);
+        await store.SaveAsync(JsonSettingsStore.CreateDefaults() with
+        {
+            SchemaVersion = 1,
+            InferenceMode = InferenceMode.Vulkan,
+            PreloadModel = false
+        });
+
+        var settings = await store.LoadAsync();
+
+        Assert.Equal(2, settings.SchemaVersion);
+        Assert.Equal(InferenceMode.Vulkan, settings.InferenceMode);
+        Assert.False(settings.PreloadModel);
     }
 
     [Fact]
@@ -214,6 +235,67 @@ public sealed class ConversationStoreTests : IDisposable
     }
 
     public void Dispose() => _paths.Dispose();
+}
+
+public sealed class StreamingTextBufferTests
+{
+    [Fact]
+    public void Publishes_the_first_delta_then_coalesces_until_the_interval()
+    {
+        var buffer = new StreamingTextBuffer(50);
+
+        Assert.True(buffer.Append("最", 0));
+        Assert.False(buffer.Append("初", 10));
+        Assert.True(buffer.Append("応答", 50));
+        Assert.Equal("最初応答", buffer.Content);
+    }
+}
+
+public sealed class InferenceOptimizationTests
+{
+    [Fact]
+    public void Auto_order_prefers_a_valid_benchmark_then_hardware_fallbacks()
+    {
+        var hardware = new HardwareCapabilities(true, true, "GPU");
+
+        var order = InferenceOptimization.CreateBackendOrder(hardware, [RuntimeBackend.Vulkan]);
+
+        Assert.Equal([RuntimeBackend.Vulkan, RuntimeBackend.Cuda, RuntimeBackend.Cpu], order);
+    }
+
+    [Fact]
+    public void Benchmark_json_extracts_prompt_and_generation_rates()
+    {
+        const string output = "backend log\n[{\"n_prompt\":512,\"n_gen\":0,\"avg_ts\":9000.5},{\"n_prompt\":0,\"n_gen\":128,\"avg_ts\":190.25}]\nmore log";
+
+        var result = LlamaBenchmarkService.ParseResult(output);
+
+        Assert.Equal(9000.5, result?.PromptRate);
+        Assert.Equal(190.25, result?.GenerationRate);
+    }
+
+    [Fact]
+    public void Benchmark_fingerprint_changes_when_the_gpu_driver_changes()
+    {
+        using var paths = new TestPaths();
+        paths.EnsureCreated();
+        var modelPath = Path.Combine(paths.ModelsDirectory, "model.gguf");
+        var runtimePath = Path.Combine(paths.RuntimesDirectory, "llama-server.exe");
+        File.WriteAllText(modelPath, "model");
+        File.WriteAllText(runtimePath, "runtime");
+        var model = new ModelProfile { Id = "model" };
+        var gpuBefore = new GpuCapability("GPU", "NVIDIA", 12L << 30, "1.0", true, true);
+        var gpuAfter = gpuBefore with { DriverVersion = "2.0" };
+        var before = new HardwareCapabilities(true, true, "GPU", Gpus: [gpuBefore]);
+        var after = before with { Gpus = [gpuAfter] };
+
+        var first = InferenceOptimization.CreateBenchmarkFingerprint(
+            model, modelPath, runtimePath, RuntimeBackend.Cuda, before, "build");
+        var second = InferenceOptimization.CreateBenchmarkFingerprint(
+            model, modelPath, runtimePath, RuntimeBackend.Cuda, after, "build");
+
+        Assert.NotEqual(first, second);
+    }
 }
 
 public sealed class MarkdownConversationExporterTests : IDisposable

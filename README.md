@@ -14,7 +14,8 @@ Gemma 4 E2B/E4Bをローカルで実行し、MCPツールを人間の承認付�
 
 - Gemma 4 E2B/E4B公式Instruction Tuned QAT GGUF、および任意のローカルGGUF
 - アプリ管理の`llama-server`によるOpenAI互換SSEストリーミング
-- Auto / CPU / NVIDIA CUDA / Vulkan推論、生成停止、再生成、モデル切り替え
+- Auto / CPU / NVIDIA CUDA / Vulkan推論、起動時プリロード、生成停止、再生成、モデル切り替え
+- ハードウェアに応じた自動バックエンド選択、任意の速度診断、初回応答時間と生成速度の表示
 - MCP C# SDKによるstdio / Streamable HTTP接続
 - Tool Callの引数検証、「今回のみ許可」「常に許可」「拒否」と実行結果表示
 - SQLiteによる会話履歴、Markdown対応チャット表示、会話単位のMarkdown保存

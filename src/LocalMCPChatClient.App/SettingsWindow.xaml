@@ -40,6 +40,14 @@
                         </StackPanel>
                         <TextBlock Text="カスタム llama-server" Margin="0,10,0,3" Foreground="{StaticResource MutedTextBrush}" />
                         <TextBox Text="{Binding CustomRuntimePath}" IsReadOnly="True" />
+                        <CheckBox Content="起動時にモデルを準備する（初回応答を高速化）" IsChecked="{Binding PreloadModel}" Margin="2,12,0,0" />
+                        <TextBlock Text="{Binding PerformanceRecommendation}" TextWrapping="Wrap" Foreground="{StaticResource AccentBrush}" Margin="0,10,0,0" />
+                        <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+                            <Button Content="速度診断を実行" Command="{Binding RunBenchmarkCommand}" />
+                            <Button Content="診断を中止" Command="{Binding CancelBenchmarkCommand}" />
+                            <Button Content="推奨設定を適用" Command="{Binding ApplyBenchmarkCommand}" Background="#0369A1" />
+                        </StackPanel>
+                        <TextBlock Text="{Binding BenchmarkResultText}" TextWrapping="Wrap" Foreground="{StaticResource MutedTextBrush}" Margin="0,6,0,0" />
                         <Separator Margin="0,18" />
 
                         <TextBlock Text="生成設定" FontSize="18" FontWeight="Bold" Foreground="{StaticResource AccentBrush}" />

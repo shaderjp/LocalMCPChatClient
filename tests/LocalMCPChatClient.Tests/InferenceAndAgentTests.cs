@@ -20,15 +20,19 @@ public sealed class LlamaInferenceServiceTests
 
             data: {"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"name":"forecast","arguments":"\"東京\"}"}}]}}]}
 
-            data: {"choices":[],"usage":{"prompt_tokens":10,"completion_tokens":5,"total_tokens":15}}
+            data: {"choices":[],"usage":{"prompt_tokens":10,"completion_tokens":5,"total_tokens":15},"timings":{"prompt_per_second":500.0,"predicted_per_second":125.0}}
 
             data: [DONE]
 
             """;
+        string? requestBody = null;
         var handler = new StubHttpHandler(request =>
         {
             Assert.Equal("Bearer", request.Headers.Authorization?.Scheme);
             Assert.Equal("runtime-key", request.Headers.Authorization?.Parameter);
+            if (request.RequestUri?.AbsolutePath == "/completion")
+                return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("{\"content\":\"x\"}") };
+            requestBody = request.Content!.ReadAsStringAsync().GetAwaiter().GetResult();
             return new HttpResponseMessage(HttpStatusCode.OK)
             {
                 Content = new StringContent(sse, Encoding.UTF8, "text/event-stream")
@@ -46,6 +50,90 @@ public sealed class LlamaInferenceServiceTests
         Assert.Equal("weather__get_forecast", call.Name);
         Assert.Equal("{\"city\":\"東京\"}", call.ArgumentsJson);
         Assert.Equal(15, updates.Last().Usage?.TotalTokens);
+        Assert.True(updates.Last().Timing?.TimeToFirstTokenMilliseconds > 0);
+        Assert.Equal(500, updates.Last().Timing?.PromptTokensPerSecond);
+        Assert.Equal(125, updates.Last().Timing?.GeneratedTokensPerSecond);
+        Assert.Contains("\"cache_prompt\":true", requestBody);
+        Assert.Contains("\"reasoning_effort\":\"none\"", requestBody);
+        Assert.Contains("\"enable_thinking\":false", requestBody);
+    }
+
+    [Fact]
+    public async Task Preparation_is_idempotent_for_the_same_profile_and_model()
+    {
+        var handler = new StubHttpHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent("{\"content\":\"x\"}")
+        });
+        var runtime = new StubRuntimeManager();
+        var service = new LlamaInferenceService(runtime, new StubHttpClientFactory(handler));
+        var profile = new InferenceProfile();
+        var model = new ModelProfile { Id = "model" };
+
+        await Task.WhenAll(service.StartAsync(profile, model), service.StartAsync(profile, model));
+
+        Assert.Equal(1, runtime.StartCount);
+    }
+
+    [Fact]
+    public async Task Preparation_restarts_if_the_runtime_was_stopped_externally()
+    {
+        var handler = new StubHttpHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent("{\"content\":\"x\"}")
+        });
+        var runtime = new StubRuntimeManager();
+        var service = new LlamaInferenceService(runtime, new StubHttpClientFactory(handler));
+        var profile = new InferenceProfile();
+        var model = new ModelProfile { Id = "model" };
+
+        await service.StartAsync(profile, model);
+        await runtime.StopAsync();
+        await service.StartAsync(profile, model);
+
+        Assert.Equal(2, runtime.StartCount);
+    }
+
+    [Fact]
+    public async Task Warmup_failure_does_not_block_a_ready_runtime()
+    {
+        var handler = new StubHttpHandler(_ => new HttpResponseMessage(HttpStatusCode.InternalServerError)
+        {
+            Content = new StringContent("warmup unavailable")
+        });
+        var service = new LlamaInferenceService(new StubRuntimeManager(), new StubHttpClientFactory(handler));
+
+        await service.StartAsync(new InferenceProfile(), new ModelProfile { Id = "model" });
+
+        Assert.Equal(RuntimeStatus.Ready, service.State.Status);
+    }
+
+    [Fact]
+    public async Task Missing_server_metrics_uses_usage_and_elapsed_time()
+    {
+        const string sse = """
+            data: {"choices":[{"delta":{"content":"回答"}}]}
+
+            data: {"choices":[],"usage":{"prompt_tokens":8,"completion_tokens":2,"total_tokens":10}}
+
+            data: [DONE]
+
+            """;
+        var handler = new StubHttpHandler(request => new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent(
+                request.RequestUri?.AbsolutePath == "/completion" ? "{\"content\":\"x\"}" : sse,
+                Encoding.UTF8,
+                request.RequestUri?.AbsolutePath == "/completion" ? "application/json" : "text/event-stream")
+        });
+        var service = new LlamaInferenceService(new StubRuntimeManager(), new StubHttpClientFactory(handler));
+        await service.StartAsync(new InferenceProfile(), new ModelProfile { Id = "model" });
+
+        var updates = await CollectAsync(service.StreamCompletionAsync(
+            new InferenceRequest("model", [], [], 0, 16)));
+
+        Assert.True(updates.Last().Timing?.PromptTokensPerSecond > 0);
+        Assert.True(updates.Last().Timing?.GeneratedTokensPerSecond > 0);
     }
 
     private static async Task<List<T>> CollectAsync<T>(IAsyncEnumerable<T> source)
@@ -79,6 +167,26 @@ public sealed class AgentChatServiceTests : IDisposable
         var messages = await store.GetMessagesAsync(conversation.Id);
         Assert.Contains(messages, item => item.Role == ChatRole.Tool && item.IsError && item.Content.Contains("拒否"));
         Assert.Contains(messages, item => item.Role == ChatRole.Assistant && item.Content == "確認できませんでした。");
+        Assert.NotNull(events.Single(item => item.Kind == AgentEventKind.Completed).Performance);
+    }
+
+    [Fact]
+    public async Task Cancellation_persists_the_visible_partial_answer()
+    {
+        var store = new SqliteConversationStore(_paths);
+        var conversation = await store.CreateAsync("new");
+        var agent = new AgentChatService(store, new CancellableInference(), new RecordingMcpManager(), new AskApprovalService(), new DenyPrompt());
+        using var cancellation = new CancellationTokenSource();
+        await using var events = agent.RunTurnAsync(
+            conversation.Id, "長い回答", new InferenceProfile(), new ModelProfile { Id = "gemma" }, cancellation.Token).GetAsyncEnumerator();
+        Assert.True(await events.MoveNextAsync());
+        Assert.Equal("途中", events.Current.Text);
+
+        cancellation.Cancel();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(async () => await events.MoveNextAsync().AsTask());
+
+        var messages = await store.GetMessagesAsync(conversation.Id);
+        Assert.Contains(messages, message => message.Role == ChatRole.Assistant && message.Content == "途中");
     }
 
     public void Dispose() => _paths.Dispose();
@@ -86,6 +194,7 @@ public sealed class AgentChatServiceTests : IDisposable
 
 internal sealed class StubRuntimeManager : IInferenceRuntimeManager
 {
+    public int StartCount { get; private set; }
     public RuntimeState State { get; private set; } = RuntimeState.Stopped;
     public event EventHandler<RuntimeState>? StateChanged;
 
@@ -93,6 +202,7 @@ internal sealed class StubRuntimeManager : IInferenceRuntimeManager
 
     public Task<RuntimeState> StartAsync(InferenceProfile profile, ModelProfile model, CancellationToken cancellationToken = default)
     {
+        StartCount++;
         State = new RuntimeState(RuntimeStatus.Ready, RuntimeBackend.Cpu, new Uri("http://127.0.0.1:12345/"), "model.gguf", AuthenticationToken: "runtime-key");
         StateChanged?.Invoke(this, State);
         return Task.FromResult(State);
@@ -106,6 +216,23 @@ internal sealed class StubRuntimeManager : IInferenceRuntimeManager
 
     public Task<HardwareCapabilities> DetectHardwareAsync(CancellationToken cancellationToken = default)
         => Task.FromResult(new HardwareCapabilities(false, false, "CPU"));
+
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+}
+
+internal sealed class CancellableInference : IInferenceService
+{
+    public RuntimeState State { get; } = new(RuntimeStatus.Ready, RuntimeBackend.Cpu);
+    public Task StartAsync(InferenceProfile profile, ModelProfile model, CancellationToken cancellationToken = default) => Task.CompletedTask;
+    public Task StopAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
+    public Task<bool> IsHealthyAsync(CancellationToken cancellationToken = default) => Task.FromResult(true);
+
+    public async IAsyncEnumerable<InferenceUpdate> StreamCompletionAsync(
+        InferenceRequest request, [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        yield return new InferenceUpdate(TextDelta: "途中");
+        await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+    }
 
     public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 }

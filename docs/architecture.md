@@ -69,11 +69,19 @@ sequenceDiagram
 
 `LlamaInferenceService`は、OpenAI互換`/v1/chat/completions`へ会話履歴とToolsを送り、SSEを`InferenceUpdate`へ変換します。キャンセルトークンはHTTP要求と子プロセス管理へ伝播します。
 
-AutoモードはCuda → Vulkan → Cpuの順で起動し、最後に成功した方式を設定へ保存します。Cpu / Cuda / Vulkanの明示指定では別方式へ自動フォールバックしません。
+Autoモードは、有効な速度診断結果を最優先し、NVIDIA環境ではCuda → Vulkan → Cpu、それ以外ではVulkan → Cpuの順で起動します。実行前に`--list-devices`でバックエンドとデバイスの組み合わせを確認し、最後に成功した方式を設定へ保存します。Cpu / Cuda / Vulkanの明示指定では別方式へ自動フォールバックしません。
+
+メイン画面は会話履歴を読み込んだ時点で表示し、MCP接続とモデルのプリロードをバックグラウンドで並行します。プリロードはモデル読み込み後に保存しない1トークン推論を実行し、初回のGPUカーネル準備を済ませます。同一プロファイルへの複数要求は一つの準備処理を共有します。
+
+ストリーミングdeltaは`StreamingTextBuffer`へ蓄積し、最初だけ即時、その後は最大20回/秒でUIへ通知します。生成中はプレーンテキストを表示し、完了時に一度だけMarkdownを構築します。
+
+速度診断はインストール済み`llama-bench`を使用し、結果をモデル・ランタイム・CPU/GPU・ドライバーのfingerprintとともに`settings.json`へ保存します。fingerprintが変わった結果はAuto選択に使用しません。
 
 ## チャットとTool Callループ
 
 `AgentChatService`は会話単位の1ターンを次の順で処理します。
+
+システム指示に加え、llama-serverへ`reasoning_effort=none`と`chat_template_kwargs.enable_thinking=false`を渡します。これにより、推論用トークンが本文表示前に出力上限を消費することを防ぎます。Tool Callと承認フローは従来どおり利用できます。
 
 ```mermaid
 sequenceDiagram
