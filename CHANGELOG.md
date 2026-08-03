@@ -2,6 +2,21 @@
 
 このプロジェクトの主な変更をバージョンごとに記録します。
 
+## [0.1.2] - 2026-08-03
+
+### Added
+
+- 起動後のバックグラウンドモデル準備とGPUウォームアップ
+- ハードウェアと速度診断結果に基づくAutoバックエンド選択
+- CUDA/Vulkanを比較できるキャンセル可能な速度診断
+- 初回応答時間、token使用量、生成速度、使用バックエンドの計測と表示
+
+### Changed
+
+- `llama-server`のGPUオフロード、スレッド、batch、KV cache、prompt cache設定を実行環境に合わせて最適化
+- ストリーミング表示を50ms単位で集約し、生成完了時にだけMarkdownを構築するよう変更
+- Gemmaの非表示思考が出力上限を消費しないよう、最終回答生成を明示
+
 ## [0.1.1] - 2026-08-03
 
 ### Added
@@ -35,3 +50,4 @@
 
 [0.1.0]: https://github.com/shaderjp/LocalMCPChatClient/releases/tag/v0.1.0
 [0.1.1]: https://github.com/shaderjp/LocalMCPChatClient/releases/tag/v0.1.1
+[0.1.2]: https://github.com/shaderjp/LocalMCPChatClient/releases/tag/v0.1.2

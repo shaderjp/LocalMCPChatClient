@@ -18,7 +18,7 @@
 - ZIPと同時に配布されたSHA-256とファイルハッシュを比較する
 
 ```powershell
-Get-FileHash .\LocalMCPChatClient-0.1.1-win-x64.zip -Algorithm SHA256
+Get-FileHash .\LocalMCPChatClient-0.1.2-win-x64.zip -Algorithm SHA256
 ```
 
 ### Visual Studioの場合
