@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Diagnostics;
 using System.Text.Json;
 using System.Windows;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -12,11 +13,14 @@ public sealed partial class MainViewModel(
     IConversationExporter conversationExporter,
     ISettingsStore settingsStore,
     IAgentChatService agentChatService,
+    IInferenceService inferenceService,
     IMcpConnectionManager mcpManager,
     IInferenceRuntimeManager runtimeManager) : ObservableObject
 {
     private AppSettings _settings = new();
     private CancellationTokenSource? _turnCancellation;
+    private CancellationTokenSource? _preloadCancellation;
+    private bool _isInitializing;
 
     public ObservableCollection<ConversationItemViewModel> Conversations { get; } = [];
     public ObservableCollection<ChatItemViewModel> Messages { get; } = [];
@@ -34,6 +38,7 @@ public sealed partial class MainViewModel(
 
     public async Task InitializeAsync()
     {
+        _isInitializing = true;
         _settings = await settingsStore.LoadAsync();
         Models.Clear();
         foreach (var model in _settings.Models) Models.Add(model);
@@ -45,8 +50,32 @@ public sealed partial class MainViewModel(
 
         var hardware = await runtimeManager.DetectHardwareAsync();
         StatusText = _settings.SetupCompleted ? hardware.Summary : "初回設定が完了していません。設定を開いてください。";
-        foreach (var server in _settings.McpServers.Where(server => server.Enabled)) await mcpManager.ConnectAsync(server);
-        await RefreshMcpStatusAsync();
+        _isInitializing = false;
+    }
+
+    public async Task StartBackgroundInitializationAsync()
+    {
+        _preloadCancellation?.Cancel();
+        _preloadCancellation?.Dispose();
+        _preloadCancellation = new CancellationTokenSource();
+        var token = _preloadCancellation.Token;
+        var connections = _settings.McpServers.Where(server => server.Enabled)
+            .Select(server => mcpManager.ConnectAsync(server, token))
+            .ToArray();
+        var preload = PreloadSelectedModelAsync(token);
+        try
+        {
+            await Task.WhenAll(connections.Cast<Task>().Append(preload));
+        }
+        catch (OperationCanceledException) when (token.IsCancellationRequested) { }
+        catch (Exception exception)
+        {
+            StatusText = "バックグラウンド初期化の一部に失敗しました: " + exception.Message;
+        }
+        finally
+        {
+            await RefreshMcpStatusAsync();
+        }
     }
 
     [RelayCommand]
@@ -95,7 +124,10 @@ public sealed partial class MainViewModel(
         SendCommand.NotifyCanExecuteChanged();
         RegenerateCommand.NotifyCanExecuteChanged();
         _turnCancellation = new CancellationTokenSource();
-        var assistant = new ChatItemViewModel(ChatRole.Assistant, string.Empty);
+        var assistant = new ChatItemViewModel(ChatRole.Assistant, string.Empty) { IsStreaming = true };
+        var assistantBuffer = new StreamingTextBuffer();
+        var renderTimer = Stopwatch.StartNew();
+        TurnPerformance? performance = null;
         Messages.Add(new ChatItemViewModel(ChatRole.User, text));
         Messages.Add(assistant);
 
@@ -116,16 +148,23 @@ public sealed partial class MainViewModel(
                 switch (item.Kind)
                 {
                     case AgentEventKind.TextDelta:
-                        assistant.Content += item.Text;
+                        if (assistantBuffer.Append(item.Text, renderTimer.ElapsedMilliseconds))
+                        {
+                            assistant.Content = assistantBuffer.Content;
+                            renderTimer.Restart();
+                        }
                         StatusText = "生成中…";
                         break;
                     case AgentEventKind.ToolApprovalRequired:
+                        FlushAssistant();
                         StatusText = "ツール実行の承認を待っています";
                         break;
                     case AgentEventKind.ToolStarted:
+                        FlushAssistant();
                         StatusText = $"ツール実行中: {item.ToolCall?.Name}";
                         break;
                     case AgentEventKind.ToolCompleted:
+                        FlushAssistant();
                         Messages.Add(new ChatItemViewModel(
                             ChatRole.Tool,
                             FormatToolCard(item.ToolCall?.ArgumentsJson, item.ToolResult?.Content, item.ToolResult?.IsError == true),
@@ -135,15 +174,24 @@ public sealed partial class MainViewModel(
                     case AgentEventKind.Warning:
                         Messages.Add(new ChatItemViewModel(ChatRole.System, item.Text ?? string.Empty, true));
                         break;
+                    case AgentEventKind.Completed:
+                        performance = item.Performance;
+                        break;
                 }
             }
-            StatusText = $"完了 · {runtimeManager.State.Backend}";
+            assistant.Content = assistantBuffer.Content;
+            assistant.IsStreaming = false;
+            StatusText = performance is null
+                ? $"完了 · {FormatBackend(runtimeManager.State.Backend)}"
+                : $"完了 · {FormatBackend(performance.Backend)} · 初回 {performance.TimeToFirstTokenMilliseconds / 1000d:F2}秒 · {performance.GeneratedTokensPerSecond:F1} tok/s";
             var selectedId = SelectedConversation.Id;
             await ReloadConversationsAsync(selectedId);
             await LoadMessagesAsync(selectedId);
         }
         catch (OperationCanceledException)
         {
+            assistant.Content = assistantBuffer.Content;
+            assistant.IsStreaming = false;
             StatusText = "生成を停止しました";
         }
         catch (Exception exception)
@@ -152,9 +200,10 @@ public sealed partial class MainViewModel(
                 ? "\n設定でCPU推論を選択して再試行できます。"
                 : string.Empty;
             StatusText = "エラー: " + exception.Message;
-            assistant.Content = string.IsNullOrEmpty(assistant.Content)
-                ? exception.Message + retryHint
-                : assistant.Content + $"\n\nエラー: {exception.Message}{retryHint}";
+            if (assistantBuffer.Length > 0) assistantBuffer.AppendLine().AppendLine();
+            assistantBuffer.Append("エラー: ").Append(exception.Message).Append(retryHint);
+            assistant.Content = assistantBuffer.Content;
+            assistant.IsStreaming = false;
         }
         finally
         {
@@ -163,6 +212,12 @@ public sealed partial class MainViewModel(
             IsBusy = false;
             SendCommand.NotifyCanExecuteChanged();
             RegenerateCommand.NotifyCanExecuteChanged();
+        }
+
+        void FlushAssistant()
+        {
+            if (assistant.Content != assistantBuffer.Content) assistant.Content = assistantBuffer.Content;
+            renderTimer.Restart();
         }
     }
 
@@ -191,16 +246,53 @@ public sealed partial class MainViewModel(
 
     partial void OnSelectedModelChanged(ModelProfile? value)
     {
-        if (value is not null && _settings.Models.Count > 0) _ = SaveSelectionAsync(value.Id, SelectedInferenceMode);
+        if (!_isInitializing && value is not null && _settings.Models.Count > 0)
+            _ = SaveSelectionAndPreloadAsync(value.Id, SelectedInferenceMode);
     }
 
     partial void OnSelectedInferenceModeChanged(InferenceMode value)
     {
-        if (_settings.Models.Count > 0) _ = SaveSelectionAsync(SelectedModel?.Id, value);
+        if (!_isInitializing && _settings.Models.Count > 0)
+            _ = SaveSelectionAndPreloadAsync(SelectedModel?.Id, value);
     }
 
     private async Task SaveSelectionAsync(string? modelId, InferenceMode mode)
         => _settings = await settingsStore.UpdateAsync(settings => settings with { SelectedModelId = modelId, InferenceMode = mode });
+
+    private async Task SaveSelectionAndPreloadAsync(string? modelId, InferenceMode mode)
+    {
+        await SaveSelectionAsync(modelId, mode);
+        _preloadCancellation?.Cancel();
+        _preloadCancellation?.Dispose();
+        _preloadCancellation = new CancellationTokenSource();
+        await PreloadSelectedModelAsync(_preloadCancellation.Token);
+    }
+
+    private async Task PreloadSelectedModelAsync(CancellationToken cancellationToken)
+    {
+        if (!_settings.SetupCompleted || !_settings.PreloadModel || SelectedModel is null) return;
+        try
+        {
+            StatusText = "モデルを準備中…";
+            await inferenceService.StartAsync(CreateProfile(), SelectedModel, cancellationToken);
+            StatusText = $"準備完了 · {FormatBackend(inferenceService.State.Backend)}";
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }
+        catch (Exception exception)
+        {
+            StatusText = "モデルの事前準備に失敗しました: " + exception.Message;
+        }
+    }
+
+    private InferenceProfile CreateProfile() => new()
+    {
+        ModelId = SelectedModel?.Id ?? string.Empty,
+        Mode = SelectedInferenceMode,
+        ContextSize = _settings.ContextSize,
+        MaxOutputTokens = _settings.MaxOutputTokens,
+        Temperature = _settings.Temperature,
+        CustomRuntimePath = _settings.CustomRuntimePath
+    };
 
     private async Task ReloadConversationsAsync(Guid? keepSelected = null)
     {
@@ -255,6 +347,14 @@ public sealed partial class MainViewModel(
         var safeArguments = (arguments ?? "{}").Replace("```", "` ` `", StringComparison.Ordinal);
         return $"**状態:** {(isError ? "失敗" : "完了")}\n\n**引数**\n```json\n{safeArguments}\n```\n\n**結果**\n\n{result}";
     }
+
+    private static string FormatBackend(RuntimeBackend? backend) => backend switch
+    {
+        RuntimeBackend.Cuda => "CUDA",
+        RuntimeBackend.Vulkan => "Vulkan",
+        RuntimeBackend.Cpu => "CPU",
+        _ => "不明"
+    };
 
     private async Task RefreshMcpStatusAsync()
     {

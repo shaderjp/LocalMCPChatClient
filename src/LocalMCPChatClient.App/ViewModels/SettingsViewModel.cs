@@ -14,10 +14,12 @@ public sealed partial class SettingsViewModel(
     IToolApprovalService approvalService,
     IMcpConnectionManager mcpManager,
     IInferenceRuntimeManager runtimeManager,
+    IInferenceBenchmarkService benchmarkService,
     IArtifactInstaller artifactInstaller,
     IAppPaths paths) : ObservableObject
 {
     private AppSettings _settings = new();
+    private CancellationTokenSource? _benchmarkCancellation;
     public ObservableCollection<ModelProfile> Models { get; } = [];
     public ObservableCollection<McpServerEditorViewModel> McpServers { get; } = [];
     public ObservableCollection<string> ApprovalRules { get; } = [];
@@ -33,11 +35,14 @@ public sealed partial class SettingsViewModel(
     [ObservableProperty] private int _maxOutputTokens = 2048;
     [ObservableProperty] private double _temperature = 0.7;
     [ObservableProperty] private string? _customRuntimePath;
+    [ObservableProperty] private bool _preloadModel = true;
     [ObservableProperty] private string _modelDirectory = string.Empty;
     [ObservableProperty] private McpServerEditorViewModel? _selectedMcpServer;
     [ObservableProperty] private string _statusText = string.Empty;
     [ObservableProperty] private double _progressValue;
     [ObservableProperty] private bool _isWorking;
+    [ObservableProperty] private string _performanceRecommendation = string.Empty;
+    [ObservableProperty] private string _benchmarkResultText = string.Empty;
 
     public async Task InitializeAsync()
     {
@@ -56,11 +61,17 @@ public sealed partial class SettingsViewModel(
         MaxOutputTokens = _settings.MaxOutputTokens;
         Temperature = _settings.Temperature;
         CustomRuntimePath = _settings.CustomRuntimePath;
+        PreloadModel = _settings.PreloadModel;
         ModelDirectory = _settings.ModelDirectory ?? paths.ModelsDirectory;
         McpServers.Clear();
         foreach (var server in _settings.McpServers) McpServers.Add(new McpServerEditorViewModel(server));
         SelectedMcpServer = McpServers.FirstOrDefault();
         RefreshApprovalRules();
+        var hardware = await runtimeManager.DetectHardwareAsync();
+        PerformanceRecommendation = InferenceMode != InferenceMode.Auto &&
+                                    InferenceMode != ToInferenceMode(hardware.RecommendedBackend)
+            ? $"このPCでは{FormatBackend(hardware.RecommendedBackend)}を推奨します。Autoまたは速度診断を利用できます。"
+            : hardware.Summary;
         StatusText = "設定を読み込みました。";
     }
 
@@ -74,10 +85,59 @@ public sealed partial class SettingsViewModel(
             ContextSize = Math.Clamp(ContextSize, 512, 131072),
             MaxOutputTokens = Math.Clamp(MaxOutputTokens, 64, 32768),
             Temperature = Math.Clamp(Temperature, 0, 2),
+            PreloadModel = PreloadModel,
             CustomRuntimePath = string.IsNullOrWhiteSpace(CustomRuntimePath) ? null : Path.GetFullPath(CustomRuntimePath),
             ModelDirectory = string.IsNullOrWhiteSpace(ModelDirectory) ? paths.ModelsDirectory : Path.GetFullPath(ModelDirectory)
         });
         StatusText = "推論設定を保存しました。次の送信から反映されます。";
+    }
+
+    [RelayCommand]
+    private async Task RunBenchmarkAsync()
+    {
+        if (SelectedModel is null || IsWorking) return;
+        IsWorking = true;
+        BenchmarkResultText = string.Empty;
+        _benchmarkCancellation = new CancellationTokenSource();
+        try
+        {
+            var progress = new Progress<BenchmarkProgress>(item =>
+            {
+                StatusText = item.Stage;
+                ProgressValue = item.Percent;
+            });
+            var results = await benchmarkService.RunAsync(SelectedModel, progress, _benchmarkCancellation.Token);
+            BenchmarkResultText = string.Join(Environment.NewLine, results
+                .OrderByDescending(result => result.PromptTokensPerSecond)
+                .Select(result => $"{FormatBackend(result.Backend)}: prompt {result.PromptTokensPerSecond:F0} tok/s · generation {result.GeneratedTokensPerSecond:F1} tok/s"));
+            StatusText = "速度診断が完了しました。推奨設定を適用できます。";
+        }
+        catch (OperationCanceledException)
+        {
+            StatusText = "速度診断をキャンセルしました。";
+        }
+        catch (Exception exception)
+        {
+            StatusText = "速度診断に失敗しました: " + exception.Message;
+        }
+        finally
+        {
+            _benchmarkCancellation?.Dispose();
+            _benchmarkCancellation = null;
+            IsWorking = false;
+        }
+    }
+
+    [RelayCommand]
+    private void CancelBenchmark() => _benchmarkCancellation?.Cancel();
+
+    [RelayCommand]
+    private async Task ApplyBenchmarkAsync()
+    {
+        if (string.IsNullOrWhiteSpace(BenchmarkResultText)) return;
+        InferenceMode = InferenceMode.Auto;
+        await SaveGeneralAsync();
+        StatusText = "速度診断結果をAutoモードへ適用しました。";
     }
 
     [RelayCommand]
@@ -217,6 +277,20 @@ public sealed partial class SettingsViewModel(
             IsWorking = false;
         }
     }
+
+    private static InferenceMode ToInferenceMode(RuntimeBackend backend) => backend switch
+    {
+        RuntimeBackend.Cuda => InferenceMode.Cuda,
+        RuntimeBackend.Vulkan => InferenceMode.Vulkan,
+        _ => InferenceMode.Cpu
+    };
+
+    private static string FormatBackend(RuntimeBackend backend) => backend switch
+    {
+        RuntimeBackend.Cuda => "CUDA",
+        RuntimeBackend.Vulkan => "Vulkan",
+        _ => "CPU"
+    };
 
     [RelayCommand]
     private async Task ClearApprovalsAsync()

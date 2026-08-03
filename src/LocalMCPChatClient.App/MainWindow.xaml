@@ -80,9 +80,28 @@
                                 </Border.Style>
                                 <StackPanel>
                                     <TextBlock Text="{Binding RoleLabel}" Foreground="{StaticResource AccentBrush}" FontWeight="Bold" FontSize="12" Margin="0,0,0,6" />
+                                    <TextBlock Text="{Binding Content}" TextWrapping="Wrap" Foreground="{StaticResource TextBrush}">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock">
+                                                <Setter Property="Visibility" Value="Collapsed" />
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding IsStreaming}" Value="True"><Setter Property="Visibility" Value="Visible" /></DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
                                     <md:MarkdownScrollViewer Markdown="{Binding Content}" Engine="{StaticResource ChatMarkdownEngine}"
                                                              Background="Transparent" Foreground="{StaticResource TextBrush}"
-                                                             VerticalScrollBarVisibility="Disabled" HorizontalScrollBarVisibility="Disabled" />
+                                                             VerticalScrollBarVisibility="Disabled" HorizontalScrollBarVisibility="Disabled">
+                                        <md:MarkdownScrollViewer.Style>
+                                            <Style TargetType="md:MarkdownScrollViewer">
+                                                <Setter Property="Visibility" Value="Visible" />
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding IsStreaming}" Value="True"><Setter Property="Visibility" Value="Collapsed" /></DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </md:MarkdownScrollViewer.Style>
+                                    </md:MarkdownScrollViewer>
                                 </StackPanel>
                             </Border>
                         </DataTemplate>

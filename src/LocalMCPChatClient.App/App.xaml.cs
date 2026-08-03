@@ -33,6 +33,7 @@ public partial class App : Application
                 services.AddSingleton<IArtifactInstaller, ArtifactInstaller>();
                 services.AddSingleton<IInferenceRuntimeManager, LlamaRuntimeManager>();
                 services.AddSingleton<IInferenceService, LlamaInferenceService>();
+                services.AddSingleton<IInferenceBenchmarkService, LlamaBenchmarkService>();
                 services.AddSingleton<IMcpConnectionManager, McpConnectionManager>();
                 services.AddSingleton<IToolApprovalService, ToolApprovalService>();
                 services.AddSingleton<IToolApprovalPrompt, WpfToolApprovalPrompt>();
@@ -60,6 +61,7 @@ public partial class App : Application
 
         await _host.Services.GetRequiredService<MainViewModel>().InitializeAsync();
         mainWindow.Show();
+        _ = _host.Services.GetRequiredService<MainViewModel>().StartBackgroundInitializationAsync();
     }
 
     protected override async void OnExit(ExitEventArgs e)

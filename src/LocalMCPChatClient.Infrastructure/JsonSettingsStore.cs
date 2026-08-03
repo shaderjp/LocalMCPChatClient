@@ -147,11 +147,12 @@ public sealed class JsonSettingsStore(IAppPaths paths) : ISettingsStore
         }
         return settings with
         {
-            SchemaVersion = 1,
+            SchemaVersion = 2,
             SelectedModelId = string.IsNullOrWhiteSpace(settings.SelectedModelId) ? defaults.SelectedModelId : settings.SelectedModelId,
             ContextSize = Math.Clamp(settings.ContextSize, 512, 131_072),
             MaxOutputTokens = Math.Clamp(settings.MaxOutputTokens, 64, 32_768),
             Temperature = Math.Clamp(settings.Temperature, 0, 2),
+            InferenceBenchmarks = settings.InferenceBenchmarks ?? [],
             Models = models.Values.ToList(),
             McpServers = settings.McpServers ?? [],
             ApprovalRules = settings.ApprovalRules ?? []

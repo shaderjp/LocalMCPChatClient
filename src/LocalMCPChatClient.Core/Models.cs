@@ -5,7 +5,7 @@ namespace LocalMCPChatClient.Core;
 public enum ChatRole { System, User, Assistant, Tool }
 public enum InferenceMode { Auto, Cpu, Cuda, Vulkan }
 public enum RuntimeBackend { Cpu, Cuda, Vulkan }
-public enum RuntimeStatus { Stopped, Starting, Ready, Faulted }
+public enum RuntimeStatus { Stopped, Starting, WarmingUp, Ready, Faulted }
 public enum McpTransportKind { Stdio, StreamableHttp }
 public enum McpConnectionState { Disconnected, Connecting, Connected, Faulted }
 public enum ApprovalDecision { Ask, Allow, Deny }
@@ -50,11 +50,18 @@ public sealed record McpToolResult(
 
 public sealed record InferenceUsage(int PromptTokens, int CompletionTokens, int TotalTokens);
 
+public sealed record InferenceTiming(
+    double RequestMilliseconds,
+    double TimeToFirstTokenMilliseconds,
+    double PromptTokensPerSecond,
+    double GeneratedTokensPerSecond);
+
 public sealed record InferenceUpdate(
     string? TextDelta = null,
     IReadOnlyList<ToolCallRequest>? ToolCalls = null,
     bool IsCompleted = false,
-    InferenceUsage? Usage = null);
+    InferenceUsage? Usage = null,
+    InferenceTiming? Timing = null);
 
 public sealed record InferenceRequest(
     string Model,
@@ -151,17 +158,56 @@ public sealed record ArtifactDescriptor
 
 public sealed record ArtifactProgress(long BytesReceived, long? TotalBytes, string Stage);
 
-public sealed record HardwareCapabilities(bool HasNvidiaGpu, bool HasVulkanGpu, string Summary);
+public sealed record GpuCapability(
+    string Name,
+    string Vendor,
+    long DedicatedMemoryBytes,
+    string? DriverVersion,
+    bool SupportsCuda,
+    bool SupportsVulkan);
+
+public sealed record HardwareCapabilities(
+    bool HasNvidiaGpu,
+    bool HasVulkanGpu,
+    string Summary,
+    string CpuName = "",
+    int PhysicalCoreCount = 1,
+    int LogicalProcessorCount = 1,
+    IReadOnlyList<GpuCapability>? Gpus = null,
+    RuntimeBackend RecommendedBackend = RuntimeBackend.Cpu);
+
+public sealed record BenchmarkProgress(string Stage, RuntimeBackend? Backend = null, double Percent = 0);
+
+public sealed record InferenceBenchmarkResult
+{
+    public string Fingerprint { get; init; } = string.Empty;
+    public string ModelId { get; init; } = string.Empty;
+    public RuntimeBackend Backend { get; init; }
+    public string RuntimeBuild { get; init; } = string.Empty;
+    public double PromptTokensPerSecond { get; init; }
+    public double GeneratedTokensPerSecond { get; init; }
+    public DateTimeOffset MeasuredAt { get; init; }
+}
+
+public sealed record TurnPerformance(
+    double PreparationMilliseconds,
+    double TimeToFirstTokenMilliseconds,
+    double TotalMilliseconds,
+    int PromptTokens,
+    int CompletionTokens,
+    double GeneratedTokensPerSecond,
+    RuntimeBackend? Backend);
 
 public sealed record AgentEvent(
     AgentEventKind Kind,
     string? Text = null,
     ToolCallRequest? ToolCall = null,
-    McpToolResult? ToolResult = null);
+    McpToolResult? ToolResult = null,
+    TurnPerformance? Performance = null);
 
 public sealed record AppSettings
 {
-    public int SchemaVersion { get; init; } = 1;
+    public int SchemaVersion { get; init; } = 2;
     public bool SetupCompleted { get; init; }
     public string? SelectedModelId { get; init; }
     public InferenceMode InferenceMode { get; init; } = InferenceMode.Auto;
@@ -171,6 +217,8 @@ public sealed record AppSettings
     public double Temperature { get; init; } = 0.7;
     public string? ModelDirectory { get; init; }
     public string? CustomRuntimePath { get; init; }
+    public bool PreloadModel { get; init; } = true;
+    public List<InferenceBenchmarkResult> InferenceBenchmarks { get; init; } = [];
     public List<ModelProfile> Models { get; init; } = [];
     public List<McpServerProfile> McpServers { get; init; } = [];
     public List<ToolApprovalRule> ApprovalRules { get; init; } = [];
