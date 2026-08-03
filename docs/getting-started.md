@@ -19,7 +19,7 @@ Portable版はself-containedなので、実行するPCへ.NETランタイムを�
 ダウンロード後は、同名の`.sha256`ファイルを使って改ざんや破損がないことを確認できます。
 
 ```powershell
-Get-FileHash .\LocalMCPChatClient-0.1.1-win-x64.exe -Algorithm SHA256
+Get-FileHash .\LocalMCPChatClient-0.1.2-win-x64.exe -Algorithm SHA256
 ```
 
 ### ソースから起動する

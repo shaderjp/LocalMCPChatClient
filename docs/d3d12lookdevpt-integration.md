@@ -116,7 +116,7 @@ ACESとはどんなトーンマッパーですか？
 
 ## 対応範囲
 
-D3D12LookDevPTWinUI3のMCPサーバーはToolsに加えてResourcesとPromptsも公開しますが、LocalMCPChatClient `0.1.1`はTools中心の初期版です。本アプリから利用できるのは接続時にToolsとして列挙された機能です。
+D3D12LookDevPTWinUI3のMCPサーバーはToolsに加えてResourcesとPromptsも公開しますが、LocalMCPChatClient `0.1.2`はTools中心の初期版です。本アプリから利用できるのは接続時にToolsとして列挙された機能です。
 
 サーバーの完全なTool一覧、スキーマ、Resources、Promptsは[D3D12LookDevPTWinUI3のMCPサーバー文書](https://github.com/shaderjp/D3D12LookDevPTWinUI3/blob/main/docs/mcp.ja.md)を参照してください。
 

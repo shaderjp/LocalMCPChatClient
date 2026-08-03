@@ -2,7 +2,7 @@
 
 Gemma 4 E2B/E4Bをローカルで実行し、MCPツールを人間の承認付きで利用できるWindows向けチャットクライアントです。モデル推論、会話履歴、MCP設定は端末内に保存され、アプリからテレメトリやクラウドLLMへの送信は行いません。
 
-現在のバージョンは`0.1.1`です。変更内容は[CHANGELOG](CHANGELOG.md)を参照してください。
+現在のバージョンは`0.1.2`です。変更内容は[CHANGELOG](CHANGELOG.md)を参照してください。
 
 > [!IMPORTANT]
 > `0.1.1`は配布物のライセンス表示を修正したリリースです。`0.1.0`の配布物では第三者ライセンス通知を確認できないため、`0.1.1`以降を使用してください。
@@ -42,8 +42,8 @@ GitHub Releaseでは次の2形式を配布します。どちらも.NETランタ�
 
 | 成果物 | 用途 |
 |---|---|
-| `LocalMCPChatClient-0.1.1-win-x64.zip` | 展開して使う通常のPortable版。構成ファイルを確認しやすい |
-| `LocalMCPChatClient-0.1.1-win-x64.exe` | アプリ本体を1ファイルにまとめたself-contained版 |
+| `LocalMCPChatClient-0.1.2-win-x64.zip` | 展開して使う通常のPortable版。構成ファイルを確認しやすい |
+| `LocalMCPChatClient-0.1.2-win-x64.exe` | アプリ本体を1ファイルにまとめたself-contained版 |
 
 SHA-256ファイルも各成果物と一緒に配布します。単体EXEにはモデルと`llama-server`は含まれず、ネイティブ依存関係は実行時に一時ディレクトリへ展開される場合があります。
 

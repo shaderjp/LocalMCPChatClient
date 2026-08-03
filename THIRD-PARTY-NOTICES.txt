@@ -1,7 +1,7 @@
 LocalMCPChatClient Third-Party Notices
 ======================================
 
-Version: 0.1.1
+Version: 0.1.2
 
 This product includes third-party software. The notices below are provided
 for attribution and informational purposes and do not modify the license
