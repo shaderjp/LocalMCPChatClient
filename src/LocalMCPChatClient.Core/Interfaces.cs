@@ -77,6 +77,11 @@ public interface IMcpConnectionManager : IAsyncDisposable
     Task<McpToolResult> CallToolAsync(ToolCallRequest request, CancellationToken cancellationToken = default);
 }
 
+public interface IMcpProfileImporter
+{
+    Task<McpProfileImportResult> ImportAsync(string filePath, CancellationToken cancellationToken = default);
+}
+
 public interface IToolApprovalService
 {
     ApprovalDecision Evaluate(string serverId, string toolName);

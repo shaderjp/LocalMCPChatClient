@@ -2,6 +2,17 @@
 
 このプロジェクトの主な変更をバージョンごとに記録します。
 
+## [Unreleased]
+
+### Added
+
+- `servers`または`mcpServers`形式のJSONからMCPサーバー設定をインポートする機能
+- インポートしたAuthorization、トークン、パスワードなどをWindows Credential Managerへ自動移行する処理
+
+### Changed
+
+- MCP C# SDKを2.1.0へ更新し、Streamable HTTPのプロトコル固定と旧サーバーへの接続を改善
+
 ## [0.1.2] - 2026-08-03
 
 ### Added
@@ -23,7 +34,7 @@
 
 - 推論、モデル登録、MCP、承認ルール、Credential Manager項目をまとめて初期化する設定リセット
 - 選択したチャット履歴をTool Call監査情報付きMarkdownとして保存する機能
-- スクリーンショットとD3D12LookDevPTWinUI3を使ったMCP連携チュートリアル
+- スクリーンショットとD3D12LookDevPTを使ったMCP連携チュートリアル
 - 設定画面からアプリ本体と第三者ソフトウェアのライセンスを表示する機能
 
 ### Fixed

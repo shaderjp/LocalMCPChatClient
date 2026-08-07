@@ -105,16 +105,16 @@ Gemmaが思考だけを生成して本文を表示しない場合、最新バー
 - サーバーがchunked requestを受け付けない場合は「Content-Lengthを送信」を有効にする
 - 必要なプロトコルバージョンヘッダーを`NAME=VALUE`形式で追加する
 
-### D3D12LookDevPTWinUI3へ接続できない
+### D3D12LookDevPTへ接続できない
 
-- D3D12LookDevPTWinUI3の「MCP Server」パネルでサーバーが起動中か確認する
+- D3D12LookDevPTの「MCP Server」パネルでサーバーが起動中か確認する
 - URLを`http://127.0.0.1:8777/mcp`にする
 - 「standalone GET」をオフにする。このサーバーの`GET /mcp`は仕様どおり`405 Method Not Allowed`を返す
-- `MCP-Protocol-Version=2025-11-25`ヘッダーを確認する
+- `MCP-Protocol-Version`を追加ヘッダーから削除し、SDKに`2026-07-28`を自動交渉させる
 - `401 Unauthorized`の場合は「Copy Token」でトークンを取り直し、環境変数または秘密のHTTPヘッダーを更新する
 - `confirm_mutations`で変更処理が止まる場合は、サーバー側のMCPパネルで承認待ちをApproveまたはRejectする
 
-画面付きの設定手順は[D3D12LookDevPTWinUI3との連携例](d3d12lookdevpt-integration.md)を参照してください。
+画面付きの設定手順は[D3D12LookDevPTとの連携例](d3d12lookdevpt-integration.md)を参照してください。
 
 ### stdioサーバーが起動しない
 

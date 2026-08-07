@@ -14,6 +14,7 @@ public sealed class McpConnectionManager(
     ILoggerFactory loggerFactory,
     ILogger<McpConnectionManager> logger) : IMcpConnectionManager
 {
+    private const string ProtocolVersionHeaderName = "MCP-Protocol-Version";
     private const int MaxToolResultCharacters = 256 * 1024;
     private readonly ConcurrentDictionary<string, Connection> _connections = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<string, RegisteredTool> _tools = new(StringComparer.Ordinal);
@@ -141,6 +142,9 @@ public sealed class McpConnectionManager(
     {
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeout.CancelAfter(TimeSpan.FromSeconds(Math.Clamp(profile.StartupTimeoutSeconds, 1, 3600)));
+        var protocolVersion = profile.Transport == McpTransportKind.StreamableHttp
+            ? await ResolveHttpProtocolVersionAsync(profile, timeout.Token).ConfigureAwait(false)
+            : null;
         IClientTransport transport = profile.Transport switch
         {
             McpTransportKind.Stdio => await CreateStdioTransportAsync(profile, timeout.Token).ConfigureAwait(false),
@@ -150,7 +154,14 @@ public sealed class McpConnectionManager(
 
         try
         {
-            var client = await McpClient.CreateAsync(transport, loggerFactory: loggerFactory, cancellationToken: timeout.Token).ConfigureAwait(false);
+            var clientOptions = protocolVersion is null
+                ? null
+                : new McpClientOptions { ProtocolVersion = protocolVersion };
+            var client = await McpClient.CreateAsync(
+                transport,
+                clientOptions: clientOptions,
+                loggerFactory: loggerFactory,
+                cancellationToken: timeout.Token).ConfigureAwait(false);
             var tools = await client.ListToolsAsync(cancellationToken: timeout.Token).ConfigureAwait(false);
             return new Connection(profile, client, tools);
         }
@@ -188,7 +199,10 @@ public sealed class McpConnectionManager(
             throw new InvalidOperationException("HTTPはlocalhost接続でのみ許可されます。リモート接続にはHTTPSを使用してください。");
         var headers = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         foreach (var item in profile.Headers)
+        {
+            if (IsProtocolVersionHeader(item.Name)) continue;
             headers[item.Name] = await ResolveValueAsync(item, cancellationToken).ConfigureAwait(false) ?? string.Empty;
+        }
         if (!string.IsNullOrWhiteSpace(profile.BearerTokenEnvironmentVariable))
         {
             var variableName = profile.BearerTokenEnvironmentVariable.Trim();
@@ -213,6 +227,25 @@ public sealed class McpConnectionManager(
             AdditionalHeaders = headers
         }, httpClient, loggerFactory, ownsHttpClient: true);
     }
+
+    private async Task<string?> ResolveHttpProtocolVersionAsync(McpServerProfile profile, CancellationToken cancellationToken)
+    {
+        string? protocolVersion = null;
+        foreach (var header in profile.Headers)
+        {
+            if (!IsProtocolVersionHeader(header.Name)) continue;
+            protocolVersion = await ResolveValueAsync(header, cancellationToken).ConfigureAwait(false);
+        }
+
+        if (protocolVersion is null) return null;
+        protocolVersion = protocolVersion.Trim();
+        if (protocolVersion.Length == 0)
+            throw new InvalidOperationException("MCP-Protocol-Versionには空でないプロトコルバージョンを指定してください。");
+        return protocolVersion;
+    }
+
+    private static bool IsProtocolVersionHeader(string name)
+        => string.Equals(name.Trim(), ProtocolVersionHeaderName, StringComparison.OrdinalIgnoreCase);
 
     private async Task<string?> ResolveValueAsync(SecretValue value, CancellationToken cancellationToken)
     {

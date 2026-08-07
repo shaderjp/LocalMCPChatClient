@@ -29,6 +29,34 @@ public partial class SettingsWindow : Window
         if (dialog.ShowDialog(this) == true) await _viewModel.ImportRuntimeAsync(dialog.FileName);
     }
 
+    private async void ImportMcpJson_Click(object sender, RoutedEventArgs e)
+    {
+        var dialog = new OpenFileDialog
+        {
+            Title = "MCP設定JSONを選択",
+            Filter = "MCP settings (*.json)|*.json|All files (*.*)|*.*"
+        };
+        if (dialog.ShowDialog(this) != true) return;
+
+        try
+        {
+            var result = await _viewModel.ImportMcpAsync(dialog.FileName);
+            var message = $"MCPサーバー設定を{result.ImportedCount}件インポートしました。";
+            if (result.ReplacedCount > 0) message += $"\n同名の既存設定{result.ReplacedCount}件を置き換えました。";
+            if (result.SecretCount > 0)
+                message += $"\n秘密情報{result.SecretCount}件はWindows Credential Managerへ保存しました。元のJSONファイルには値が残るため、取り扱いに注意してください。";
+            if (result.Warnings.Count > 0)
+                message += "\n\n警告:\n・" + string.Join("\n・", result.Warnings);
+            MessageBox.Show(this, message, "MCP設定のインポート", MessageBoxButton.OK,
+                result.Warnings.Count == 0 ? MessageBoxImage.Information : MessageBoxImage.Warning);
+        }
+        catch (Exception exception)
+        {
+            MessageBox.Show(this, "MCP設定をインポートできませんでした。\n\n" + exception.Message,
+                "MCP設定のインポート", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
     private void ChooseModelDirectory_Click(object sender, RoutedEventArgs e)
     {
         var dialog = new OpenFolderDialog { Title = "モデル保存先を選択", Multiselect = false };

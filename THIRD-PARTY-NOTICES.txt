@@ -115,19 +115,19 @@ SOFTWARE.
 3. Model Context Protocol C# SDK
 --------------------------------
 
-* ModelContextProtocol 2.0.0
-* ModelContextProtocol.Core 2.0.0
+* ModelContextProtocol 2.1.0
+* ModelContextProtocol.Core 2.1.0
 
 Copyright (c) 2024-2026 Model Context Protocol a Series of LF Projects, LLC.
 
 The MCP project is undergoing a transition from MIT to Apache License 2.0.
-The exact upstream license and third-party notices used for version 2.0.0 are
+The exact upstream license and third-party notices used for version 2.1.0 are
 included with this application:
 
 * licenses/MCP-CSHARP-SDK-LICENSE.txt
 * licenses/MCP-CSHARP-SDK-THIRD-PARTY-NOTICES.txt
 
-Source: https://github.com/modelcontextprotocol/csharp-sdk/tree/v2.0.0
+Source: https://github.com/modelcontextprotocol/csharp-sdk/tree/v2.1.0
 
 
 4. SQLitePCLRaw

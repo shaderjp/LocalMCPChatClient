@@ -35,6 +35,7 @@ public partial class App : Application
                 services.AddSingleton<IInferenceService, LlamaInferenceService>();
                 services.AddSingleton<IInferenceBenchmarkService, LlamaBenchmarkService>();
                 services.AddSingleton<IMcpConnectionManager, McpConnectionManager>();
+                services.AddSingleton<IMcpProfileImporter, McpProfileJsonImporter>();
                 services.AddSingleton<IToolApprovalService, ToolApprovalService>();
                 services.AddSingleton<IToolApprovalPrompt, WpfToolApprovalPrompt>();
                 services.AddSingleton<IAgentChatService, AgentChatService>();
