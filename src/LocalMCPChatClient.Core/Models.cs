@@ -125,6 +125,18 @@ public sealed record McpServerProfile
     public int TimeoutSeconds { get; init; } = 60;
 }
 
+public sealed record ImportedMcpServer(
+    McpServerProfile Profile,
+    IReadOnlyDictionary<string, string> SecretEnvironment,
+    IReadOnlyDictionary<string, string> SecretHeaders);
+
+public sealed record McpProfileImportResult(
+    IReadOnlyList<ImportedMcpServer> Servers,
+    IReadOnlyList<string> Warnings)
+{
+    public int SecretCount => Servers.Sum(server => server.SecretEnvironment.Count + server.SecretHeaders.Count);
+}
+
 public sealed record McpConnectionInfo(
     string ServerId,
     string DisplayName,

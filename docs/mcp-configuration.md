@@ -12,6 +12,37 @@ LocalMCPChatClientは、stdioとStreamable HTTPのMCPサーバーへ接続でき
 
 保存前に「接続テスト」で入力内容を確認できます。「接続」は選択中のプロファイルを現在のセッションで接続します。
 
+## JSONからインポート
+
+「MCP接続」タブの「JSONからインポート」から、既存ツールが出力したMCP設定JSONをそのまま読み込めます。ルートに`servers`または`mcpServers`オブジェクトを持つ形式に対応します。
+
+```json
+{
+  "servers": {
+    "localRenderer": {
+      "type": "http",
+      "url": "http://127.0.0.1:8777/mcp",
+      "headers": {
+        "Authorization": "Bearer <token>"
+      }
+    }
+  }
+}
+```
+
+インポート時の動作は次の通りです。
+
+- `type: "http"`、`streamable-http`をStreamable HTTPとして読み込む
+- `type: "stdio"`、または`command`を持つ設定をstdioとして読み込む
+- `command`、`args`、`cwd`、`env`、`url`、`headers`、有効状態、タイムアウトを変換する
+- 同じ表示名の既存設定がある場合は、サーバーIDを維持したまま置き換える
+- Authorization、名前にtoken・secret・password・API keyなどを含む値は、Windows Credential Managerへ保存する
+- `Authorization: "Bearer ${env:TOKEN_NAME}"`は「Bearerトークンの環境変数名」へ変換する
+- 旧SSEなど未対応の設定は実行せず、インポート結果の警告として表示する
+- JSONから読み込んだHTTP接続では、明示指定がない限りstandalone GETを無効にする
+
+秘密値をCredential Managerへ移しても、インポート元のJSONファイル自体は変更されません。Authorizationやトークンを含むファイルは、インポート後も安全な場所で管理してください。
+
 ## 共通項目
 
 | 項目 | 説明 |
@@ -64,20 +95,22 @@ stdioサーバーへ渡す環境変数は制限された既定セットと、プ
 
 「Bearerトークンの環境変数名」を使う場合、接続時にその環境変数を読み取り、値へ`Bearer `が付いていなければ自動付与して`Authorization`ヘッダーを作ります。環境変数を追加・変更した後は、LocalMCPChatClientを再起動してください。
 
-## D3D12LookDevPTWinUI3の設定
+MCP C# SDK 2.1.0が最新のプロトコルを優先し、旧サーバーには自動的にフォールバックするため、通常は`MCP-Protocol-Version`を指定しません。旧サーバー向けに明示した場合は、一般の追加ヘッダーとして重複送信せず、SDKのプロトコル固定値として扱います。
 
-[shaderjp/D3D12LookDevPTWinUI3](https://github.com/shaderjp/D3D12LookDevPTWinUI3)は、Direct3D 12 / DXR LookDevパストレーサーをWinUI 3で操作する別アプリです。実行中のレンダラーを参照・操作するStreamable HTTP形式のローカルMCPサーバーを備えています。
+## D3D12LookDevPTの設定
 
-![D3D12LookDevPTWinUI3のレンダラー画面と下部のMCP Serverパネル](images/image004.png)
+[shaderjp/D3D12LookDevPT](https://github.com/shaderjp/D3D12LookDevPT)は、Direct3D 12 / DXR LookDevパストレーサーを操作する別アプリです。実行中のレンダラーを参照・操作するStreamable HTTP形式のローカルMCPサーバーを備えています。
 
-4枚目の画像は接続先となるMCPサーバーアプリの画面であり、LocalMCPChatClientの配布物には含まれません。ビルド、アセット、GPU要件は同リポジトリの[日本語README](https://github.com/shaderjp/D3D12LookDevPTWinUI3/blob/main/README.ja.md)を確認してください。
+![D3D12LookDevPTのレンダラー画面とMCP Serverパネル](images/image004.png)
 
-同サーバーの現在の仕様では、`127.0.0.1`だけで待ち受け、`POST /mcp`、Bearer認証、MCP Protocol `2025-11-25`または`2025-06-18`に対応します。SSEおよびstandalone `GET /mcp`は実装されていないため、この接続では「standalone GET」を無効にします。
+4枚目の画像は接続先となるMCPサーバーアプリの画面であり、LocalMCPChatClientの配布物には含まれません。ビルド、アセット、GPU要件は同リポジトリの[日本語README](https://github.com/shaderjp/D3D12LookDevPT/blob/main/README.ja.md)を確認してください。
+
+同サーバーの現在の仕様では、`127.0.0.1`だけで待ち受け、`POST /mcp`、Bearer認証、MCP Protocol `2026-07-28`、`2025-11-25`、`2025-06-18`に対応します。LocalMCPChatClientは最新のstateless方式を自動交渉します。resource subscription用SSEは`POST subscriptions/listen`のresponseであり、standalone `GET /mcp`は実装されていないため、この接続では「standalone GET」を無効にします。
 
 ### サーバー側の準備
 
-1. D3D12LookDevPTWinUI3を起動する
-2. 画面下部の「MCP Server」パネルを開く
+1. D3D12LookDevPTを起動する
+2. 「MCP Server」パネルを開く
 3. Portを`8777`、Request Timeoutを`120`秒にする
 4. Access Modeを選択する。最初は変更操作をサーバー側でも確認できる`confirm_mutations`を推奨
 5. 「Copy Token」でBearerトークンを取得する
@@ -89,13 +122,13 @@ stdioサーバーへ渡す環境変数は制限された既定セットと、プ
 
 ### クライアント側の入力
 
-次のMCPサーバー設定に対応するUI入力値です。
+D3D12LookDevPTリポジトリにある[`config/LocalMCPChatClient.mcp.json`](https://github.com/shaderjp/D3D12LookDevPT/blob/main/config/LocalMCPChatClient.mcp.json)を「JSONからインポート」で読み込むと、次の設定が追加されます。
 
 ```toml
 [mcp_servers.d3d12_lookdev_pt]
 url = "http://127.0.0.1:8777/mcp"
 bearer_token_env_var = "D3D12LOOKDEVPT_MCP_TOKEN"
-http_headers = { "MCP-Protocol-Version" = "2025-11-25" }
+http_headers = {}
 enabled = true
 startup_timeout_sec = 10
 tool_timeout_sec = 120
@@ -104,21 +137,21 @@ tool_timeout_sec = 120
 | UI項目 | 入力値 |
 |---|---|
 | 種類 | `＋ HTTP` |
-| 表示名 | `D3D12LookDevPTWinUI3` |
+| 表示名 | `D3D12LookDevPT` |
 | 有効 | オン |
 | Streamable HTTP URL | `http://127.0.0.1:8777/mcp` |
 | standalone GET | オフ |
 | Content-Length | オフのままで可 |
 | Bearerトークンの環境変数名 | `D3D12LOOKDEVPT_MCP_TOKEN` |
-| HTTPヘッダー | `MCP-Protocol-Version=2025-11-25` |
+| HTTPヘッダー | 追加なし |
 | 接続開始タイムアウト | `10` |
 | ツール実行タイムアウト | `120` |
 
-トークンそのものを「Bearerトークンの環境変数名」欄へ貼り付けないでください。「接続テスト」後、「保存」を選びます。接続できると、メイン画面右上のMCP表示に接続数と取得したTool数が反映されます。利用できるToolはD3D12LookDevPTWinUI3のビルドに依存するため、画面に表示された数を確認してください。
+トークンそのものを「Bearerトークンの環境変数名」欄へ貼り付けないでください。「接続テスト」後、「保存」を選びます。接続できると、メイン画面右上のMCP表示に接続数と取得したTool数が反映されます。利用できるToolはD3D12LookDevPTのビルドに依存するため、画面に表示された数を確認してください。
 
-保存形式の参考例は[mcp-profile-examples.json](mcp-profile-examples.json)にも収録しています。このJSONファイルは資料用であり、現在のUIにはJSONインポート機能はありません。
+アプリ内部の保存形式の参考例は[mcp-profile-examples.json](mcp-profile-examples.json)にも収録しています。インポート対象は、この内部形式ではなく、ルートに`servers`または`mcpServers`を持つ外部ツール向け形式です。
 
-サーバーの起動からチャットで露出を変更するまでの詳しい流れは[D3D12LookDevPTWinUI3との連携例](d3d12lookdevpt-integration.md)を参照してください。サーバー側のTools、Resources、Promptsの完全な一覧は、同リポジトリの[MCPサーバー文書](https://github.com/shaderjp/D3D12LookDevPTWinUI3/blob/main/docs/mcp.ja.md)が正です。LocalMCPChatClientの初期版は、そのうちToolsだけをモデルへ公開します。
+サーバーの起動からチャットで露出を変更するまでの詳しい流れは[D3D12LookDevPTとの連携例](d3d12lookdevpt-integration.md)を参照してください。サーバー側のTools、Resources、Promptsの完全な一覧は、同リポジトリの[MCPサーバー文書](https://github.com/shaderjp/D3D12LookDevPT/blob/main/docs/mcp.ja.md)が正です。LocalMCPChatClientの初期版は、そのうちToolsだけをモデルへ公開します。
 
 ## 秘密情報の扱い
 

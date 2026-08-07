@@ -17,6 +17,7 @@ Gemma 4 E2B/E4Bをローカルで実行し、MCPツールを人間の承認付�
 - Auto / CPU / NVIDIA CUDA / Vulkan推論、起動時プリロード、生成停止、再生成、モデル切り替え
 - ハードウェアに応じた自動バックエンド選択、任意の速度診断、初回応答時間と生成速度の表示
 - MCP C# SDKによるstdio / Streamable HTTP接続
+- `servers` / `mcpServers`形式のJSONからのMCPサーバー設定インポート
 - Tool Callの引数検証、「今回のみ許可」「常に許可」「拒否」と実行結果表示
 - SQLiteによる会話履歴、Markdown対応チャット表示、会話単位のMarkdown保存
 - Windows Credential Managerを利用したMCP資格情報の保存
@@ -31,10 +32,10 @@ Gemma 4 E2B/E4Bをローカルで実行し、MCPツールを人間の承認付�
 
 | LocalMCPChatClient | 接続先のMCPサーバーアプリ |
 |:---:|:---:|
-| ![Gemma 4とMCPツールについて会話しているLocalMCPChatClientのメイン画面](docs/images/image001.png) | ![MCP Serverパネルを開いたD3D12LookDevPTWinUI3](docs/images/image004.png) |
-| ローカルGemmaが接続済みToolsを理解し、日本語で説明している画面 | [D3D12LookDevPTWinUI3](https://github.com/shaderjp/D3D12LookDevPTWinUI3)のレンダラー画面。下部のMCP Serverパネルからローカルエンドポイントを起動する |
+| ![Gemma 4とMCPツールについて会話しているLocalMCPChatClientのメイン画面](docs/images/image001.png) | ![MCP Serverパネルを開いたD3D12LookDevPT](docs/images/image004.png) |
+| ローカルGemmaが接続済みToolsを理解し、日本語で説明している画面 | [D3D12LookDevPT](https://github.com/shaderjp/D3D12LookDevPT)のレンダラー画面。MCP Serverパネルからローカルエンドポイントを起動する |
 
-この例では、LocalMCPChatClientからD3D12/DXRレンダラーへ接続し、利用可能な機能の確認や露出変更をチャットで行っています。接続からTool Call確認までの手順は[D3D12LookDevPTWinUI3との連携例](docs/d3d12lookdevpt-integration.md)を参照してください。4枚目の画面は別リポジトリのMCPサーバーアプリであり、本アプリや配布物には含まれません。
+この例では、LocalMCPChatClientからD3D12/DXRレンダラーへ接続し、利用可能な機能の確認や露出変更をチャットで行っています。接続からTool Call確認までの手順は[D3D12LookDevPTとの連携例](docs/d3d12lookdevpt-integration.md)を参照してください。4枚目の画面は別リポジトリのMCPサーバーアプリであり、本アプリや配布物には含まれません。
 
 ## すぐに使う
 
@@ -96,7 +97,7 @@ Visual StudioとCLIの詳しい手順は[開発ガイド](docs/development.md)�
 | [はじめに](docs/getting-started.md) | 利用者 | インストール、初回セットアップ、最初のチャット |
 | [操作ガイド](docs/user-guide.md) | 利用者 | 画面、推論設定、履歴、ツール承認 |
 | [MCP設定ガイド](docs/mcp-configuration.md) | 利用者・MCP開発者 | stdio / HTTP設定、秘密情報、接続項目 |
-| [D3D12LookDevPTWinUI3との連携例](docs/d3d12lookdevpt-integration.md) | 利用者 | MCPサーバーの起動、接続、チャットからのレンダラー操作 |
+| [D3D12LookDevPTとの連携例](docs/d3d12lookdevpt-integration.md) | 利用者 | MCPサーバーの起動、接続、チャットからのレンダラー操作 |
 | [トラブルシューティング](docs/troubleshooting.md) | 利用者・開発者 | 推論、モデル、MCP、設定、ログの確認方法 |
 | [開発ガイド](docs/development.md) | 開発者 | Visual Studio、ビルド、テスト、発行、リポジトリ規約 |
 | [リリース手順](docs/releasing.md) | メンテナー | バージョン更新、成果物検証、タグとGitHub Release |

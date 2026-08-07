@@ -13,6 +13,7 @@ public sealed partial class SettingsViewModel(
     IConversationStore conversationStore,
     IToolApprovalService approvalService,
     IMcpConnectionManager mcpManager,
+    IMcpProfileImporter mcpProfileImporter,
     IInferenceRuntimeManager runtimeManager,
     IInferenceBenchmarkService benchmarkService,
     IArtifactInstaller artifactInstaller,
@@ -154,6 +155,83 @@ public sealed partial class SettingsViewModel(
         var editor = new McpServerEditorViewModel(new McpServerProfile { Name = "HTTP MCP", Transport = McpTransportKind.StreamableHttp, Url = "https://" });
         McpServers.Add(editor);
         SelectedMcpServer = editor;
+    }
+
+    public async Task<McpProfileImportSummary> ImportMcpAsync(string filePath)
+    {
+        if (IsWorking) throw new InvalidOperationException("別の設定処理が実行中です。");
+        IsWorking = true;
+        McpProfileImportResult? import = null;
+        var credentialChanges = new Dictionary<string, string?>(StringComparer.Ordinal);
+        var persisted = false;
+        try
+        {
+            import = await mcpProfileImporter.ImportAsync(filePath);
+            var importedNames = import.Servers.Select(server => server.Profile.Name)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            var replacedEditors = McpServers.Where(editor => importedNames.Contains(editor.Name)).ToList();
+            var retainedEditors = McpServers.Except(replacedEditors).ToList();
+            var profiles = new List<McpServerProfile>();
+            foreach (var editor in retainedEditors) profiles.Add(await editor.ToProfileAsync(secretStore));
+
+            var importedProfiles = new List<McpServerProfile>();
+            foreach (var server in import.Servers)
+            {
+                var existing = replacedEditors.FirstOrDefault(editor =>
+                    editor.Name.Equals(server.Profile.Name, StringComparison.OrdinalIgnoreCase));
+                var secured = await SecureImportedServerAsync(server, existing?.Id ?? server.Profile.Id, credentialChanges);
+                importedProfiles.Add(secured);
+                profiles.Add(secured);
+            }
+
+            var previousSettings = _settings;
+            _settings = await settingsStore.UpdateAsync(settings => settings with { McpServers = profiles });
+            persisted = true;
+
+            var warnings = import.Warnings.ToList();
+            foreach (var editor in replacedEditors)
+            {
+                try { await mcpManager.DisconnectAsync(editor.Id); }
+                catch (Exception exception) { warnings.Add($"{editor.Name}: 既存接続を切断できませんでした: {exception.Message}"); }
+            }
+
+            await DeleteInactiveSecretsAsync(previousSettings.McpServers, profiles, warnings);
+
+            McpServers.Clear();
+            foreach (var profile in profiles) McpServers.Add(new McpServerEditorViewModel(profile));
+            SelectedMcpServer = importedProfiles.Count == 0
+                ? McpServers.FirstOrDefault()
+                : McpServers.FirstOrDefault(editor => editor.Id == importedProfiles[^1].Id);
+
+            foreach (var profile in importedProfiles.Where(profile => profile.Enabled))
+            {
+                try
+                {
+                    var connection = await mcpManager.ConnectAsync(profile);
+                    if (connection.State != McpConnectionState.Connected)
+                        warnings.Add($"{profile.Name}: 保存しましたが接続できませんでした: {connection.Error}");
+                }
+                catch (Exception exception)
+                {
+                    warnings.Add($"{profile.Name}: 保存しましたが接続できませんでした: {exception.Message}");
+                }
+            }
+
+            var summary = new McpProfileImportSummary(importedProfiles.Count, replacedEditors.Count, import.SecretCount, warnings);
+            StatusText = summary.Warnings.Count == 0
+                ? $"MCP設定を{summary.ImportedCount}件インポートしました。"
+                : $"MCP設定を{summary.ImportedCount}件インポートしました（警告{summary.Warnings.Count}件）。";
+            return summary;
+        }
+        catch
+        {
+            if (!persisted) await RollbackCredentialChangesAsync(credentialChanges);
+            throw;
+        }
+        finally
+        {
+            IsWorking = false;
+        }
     }
 
     [RelayCommand]
@@ -326,7 +404,71 @@ public sealed partial class SettingsViewModel(
         foreach (var rule in _settings.ApprovalRules)
             ApprovalRules.Add($"{rule.ServerId} / {rule.ToolName}: {rule.Decision}");
     }
+
+    private async Task<McpServerProfile> SecureImportedServerAsync(
+        ImportedMcpServer imported,
+        string serverId,
+        Dictionary<string, string?> credentialChanges)
+    {
+        var environment = imported.Profile.Environment.ToList();
+        var headers = imported.Profile.Headers.ToList();
+        await AddImportedSecretsAsync(environment, imported.SecretEnvironment, serverId, "env", credentialChanges);
+        await AddImportedSecretsAsync(headers, imported.SecretHeaders, serverId, "header", credentialChanges);
+        return imported.Profile with { Id = serverId, Environment = environment, Headers = headers };
+    }
+
+    private async Task AddImportedSecretsAsync(
+        List<SecretValue> target,
+        IReadOnlyDictionary<string, string> secrets,
+        string serverId,
+        string category,
+        Dictionary<string, string?> credentialChanges)
+    {
+        foreach (var secret in secrets)
+        {
+            var reference = $"mcp:{serverId}:{category}:{secret.Key}";
+            if (!credentialChanges.ContainsKey(reference))
+                credentialChanges[reference] = await secretStore.GetAsync(reference);
+            await secretStore.SetAsync(reference, secret.Value);
+            target.RemoveAll(item => item.Name.Equals(secret.Key, StringComparison.OrdinalIgnoreCase));
+            target.Add(new SecretValue(secret.Key, SecretRef: reference));
+        }
+    }
+
+    private async Task RollbackCredentialChangesAsync(Dictionary<string, string?> changes)
+    {
+        foreach (var change in changes.Reverse())
+        {
+            if (change.Value is null) await secretStore.DeleteAsync(change.Key);
+            else await secretStore.SetAsync(change.Key, change.Value);
+        }
+    }
+
+    private async Task DeleteInactiveSecretsAsync(
+        IEnumerable<McpServerProfile> previousProfiles,
+        IEnumerable<McpServerProfile> currentProfiles,
+        List<string> warnings)
+    {
+        var activeReferences = GetSecretReferences(currentProfiles).ToHashSet(StringComparer.Ordinal);
+        foreach (var reference in GetSecretReferences(previousProfiles).Where(reference => !activeReferences.Contains(reference)).Distinct(StringComparer.Ordinal))
+        {
+            try { await secretStore.DeleteAsync(reference); }
+            catch (Exception exception) { warnings.Add($"使用されなくなった資格情報を削除できませんでした: {exception.Message}"); }
+        }
+    }
+
+    private static IEnumerable<string> GetSecretReferences(IEnumerable<McpServerProfile> profiles)
+        => profiles.SelectMany(profile => profile.Environment.Concat(profile.Headers))
+            .Select(value => value.SecretRef)
+            .Where(reference => !string.IsNullOrWhiteSpace(reference))
+            .Select(reference => reference!);
 }
+
+public sealed record McpProfileImportSummary(
+    int ImportedCount,
+    int ReplacedCount,
+    int SecretCount,
+    IReadOnlyList<string> Warnings);
 
 public sealed partial class McpServerEditorViewModel : ObservableObject
 {

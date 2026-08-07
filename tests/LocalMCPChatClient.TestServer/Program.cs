@@ -14,8 +14,49 @@ if (args.Contains("--http", StringComparer.Ordinal))
     var builder = WebApplication.CreateBuilder([]);
     builder.Logging.ClearProviders();
     builder.WebHost.UseUrls($"http://127.0.0.1:{port}");
-    builder.Services.AddMcpServer().WithHttpTransport().WithToolsFromAssembly();
+    var stateful = args.Contains("--stateful", StringComparer.Ordinal);
+    builder.Services.AddMcpServer()
+        .WithHttpTransport(options => options.Stateless = !stateful)
+        .WithToolsFromAssembly();
     var app = builder.Build();
+    if (args.Contains("--require-stateless-discover", StringComparer.Ordinal))
+    {
+        var firstPost = 0;
+        app.Use(async (context, next) =>
+        {
+            if (context.Request.Method == "POST" && Interlocked.Exchange(ref firstPost, 1) == 0)
+            {
+                var protocolVersions = context.Request.Headers["MCP-Protocol-Version"];
+                var methods = context.Request.Headers["MCP-Method"];
+                if (protocolVersions.Count != 1 || protocolVersions[0] != "2026-07-28" ||
+                    methods.Count != 1 || methods[0] != "server/discover")
+                {
+                    context.Response.StatusCode = 400;
+                    context.Response.ContentType = "application/json";
+                    await context.Response.WriteAsync(
+                        """{"jsonrpc":"2.0","id":null,"error":{"code":-32020,"message":"Expected a 2026-07-28 server/discover request."}}""");
+                    return;
+                }
+            }
+            await next();
+        });
+    }
+    if (args.Contains("--reject-duplicate-protocol-version", StringComparer.Ordinal))
+    {
+        app.Use(async (context, next) =>
+        {
+            var protocolVersions = context.Request.Headers["MCP-Protocol-Version"];
+            if (protocolVersions.Count > 1)
+            {
+                context.Response.StatusCode = 400;
+                context.Response.ContentType = "application/json";
+                await context.Response.WriteAsync(
+                    """{"jsonrpc":"2.0","id":null,"error":{"code":-32020,"message":"MCP-Protocol-Version must be sent exactly once."}}""");
+                return;
+            }
+            await next();
+        });
+    }
     if (args.Contains("--require-content-length", StringComparer.Ordinal))
     {
         app.Use(async (context, next) =>

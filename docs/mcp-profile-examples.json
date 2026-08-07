@@ -1,5 +1,5 @@
 {
-  "$comment": "保存形式の参考例です。現在のUIにJSONインポート機能はありません。",
+  "$comment": "アプリ内部の保存形式の参考例です。JSONインポートではserversまたはmcpServers形式を使用してください。",
   "stdio": {
     "id": "filesystem",
     "name": "ローカルファイル",
@@ -30,13 +30,11 @@
   },
   "d3d12LookdevPt": {
     "id": "d3d12_lookdev_pt",
-    "name": "D3D12LookDevPTWinUI3",
+    "name": "D3D12LookDevPT",
     "enabled": true,
     "transport": "streamableHttp",
     "url": "http://127.0.0.1:8777/mcp",
-    "headers": [
-      { "name": "MCP-Protocol-Version", "value": "2025-11-25" }
-    ],
+    "headers": [],
     "bearerTokenEnvironmentVariable": "D3D12LOOKDEVPT_MCP_TOKEN",
     "enableStandaloneGetStream": false,
     "bufferHttpRequestBody": false,

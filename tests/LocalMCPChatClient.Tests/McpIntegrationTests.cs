@@ -90,6 +90,27 @@ public sealed class McpIntegrationTests
     }
 
     [Fact]
+    public async Task Empty_http_protocol_version_is_reported_before_network_access()
+    {
+        await using var manager = new McpConnectionManager(
+            new MemorySecretStore(), NullLoggerFactory.Instance, NullLogger<McpConnectionManager>.Instance);
+
+        var result = await manager.TestAsync(new McpServerProfile
+        {
+            Id = "empty-protocol-version",
+            Name = "Empty protocol version",
+            Transport = McpTransportKind.StreamableHttp,
+            Url = "http://127.0.0.1:1/mcp",
+            Headers = [new SecretValue("MCP-Protocol-Version", "   ")],
+            StartupTimeoutSeconds = 1
+        });
+
+        Assert.Equal(McpConnectionState.Faulted, result.State);
+        Assert.Contains("MCP-Protocol-Version", result.Error);
+        Assert.Contains("空でない", result.Error);
+    }
+
+    [Fact]
     public async Task Streamable_http_connects_lists_and_calls_on_loopback()
     {
         var serverPath = GetServerPath();
@@ -99,7 +120,7 @@ public sealed class McpIntegrationTests
             FileName = serverPath,
             UseShellExecute = false,
             CreateNoWindow = true
-        }.WithArguments("--http", "--port", port.ToString(), "--require-content-length"));
+        }.WithArguments("--http", "--port", port.ToString(), "--require-content-length", "--require-stateless-discover"));
         Assert.NotNull(process);
         try
         {
@@ -130,6 +151,82 @@ public sealed class McpIntegrationTests
                 await process.WaitForExitAsync();
             }
         }
+    }
+
+    [Fact]
+    public async Task Streamable_http_pins_legacy_protocol_without_duplicate_header()
+    {
+        var serverPath = GetServerPath();
+        var port = GetFreeTcpPort();
+        using var process = Process.Start(new ProcessStartInfo
+        {
+            FileName = serverPath,
+            UseShellExecute = false,
+            CreateNoWindow = true
+        }.WithArguments("--http", "--port", port.ToString(), "--stateful", "--reject-duplicate-protocol-version"));
+        Assert.NotNull(process);
+        try
+        {
+            await WaitForPortAsync(port, process!);
+            await using var manager = new McpConnectionManager(
+                new MemorySecretStore(), NullLoggerFactory.Instance, NullLogger<McpConnectionManager>.Instance);
+            var connection = await manager.ConnectAsync(new McpServerProfile
+            {
+                Id = "legacy-http-test",
+                Name = "Legacy HTTP Test MCP",
+                Transport = McpTransportKind.StreamableHttp,
+                Url = $"http://127.0.0.1:{port}/mcp",
+                Headers =
+                [
+                    new SecretValue("mcp-protocol-version", "unsupported-first-value"),
+                    new SecretValue("MCP-Protocol-Version", "2025-11-25")
+                ],
+                TimeoutSeconds = 10
+            });
+
+            Assert.Equal(McpConnectionState.Connected, connection.State);
+            var echo = Assert.Single(await manager.GetToolsAsync(), tool => tool.OriginalName == "echo");
+            var result = await manager.CallToolAsync(new ToolCallRequest("legacy-http-call", echo.NamespacedName, "{\"text\":\"legacy\"}"));
+            Assert.False(result.IsError);
+            Assert.Contains("echo:legacy", result.Content);
+        }
+        finally
+        {
+            if (!process!.HasExited)
+            {
+                process.Kill(true);
+                await process.WaitForExitAsync();
+            }
+        }
+    }
+
+    [Fact]
+    public async Task External_d3d12lookdevpt_connects_lists_and_calls_with_negotiated_protocol()
+    {
+        var endpoint = Environment.GetEnvironmentVariable("LOCAL_MCP_CHAT_EXTERNAL_MCP_URL");
+        if (string.IsNullOrWhiteSpace(endpoint)) return;
+        const string tokenVariable = "LOCAL_MCP_CHAT_EXTERNAL_MCP_TOKEN";
+        var token = Environment.GetEnvironmentVariable(tokenVariable);
+
+        await using var manager = new McpConnectionManager(
+            new MemorySecretStore(), NullLoggerFactory.Instance, NullLogger<McpConnectionManager>.Instance);
+        var connection = await manager.ConnectAsync(new McpServerProfile
+        {
+            Id = "external-d3d12lookdevpt",
+            Name = "D3D12LookDevPT",
+            Transport = McpTransportKind.StreamableHttp,
+            Url = endpoint,
+            BearerTokenEnvironmentVariable = string.IsNullOrWhiteSpace(token) ? null : tokenVariable,
+            EnableStandaloneGetStream = false,
+            StartupTimeoutSeconds = 10,
+            TimeoutSeconds = 30
+        });
+
+        Assert.True(connection.State == McpConnectionState.Connected, connection.Error);
+        var stateTool = Assert.Single(await manager.GetToolsAsync(), tool => tool.OriginalName == "lookdevpt.get_state");
+        var result = await manager.CallToolAsync(new ToolCallRequest("external-state", stateTool.NamespacedName, "{}"));
+        Assert.False(result.IsError, result.Content);
+        Assert.Contains("\"ok\":true", result.Content);
     }
 
     private static string GetServerPath()

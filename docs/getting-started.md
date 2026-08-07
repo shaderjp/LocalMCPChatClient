@@ -80,7 +80,7 @@ Get-FileHash .\LocalMCPChatClient-0.1.2-win-x64.exe -Algorithm SHA256
 
 MCPサーバーを使う場合は、メイン画面の「設定」から「MCP接続」タブを開きます。一般的な入力方法は[MCP設定ガイド](mcp-configuration.md)を参照してください。
 
-D3D12/DXRレンダラーをチャットから操作するサンプルを試す場合は、[D3D12LookDevPTWinUI3との連携例](d3d12lookdevpt-integration.md)に、サーバー側の起動からTool Call結果の確認までを掲載しています。
+D3D12/DXRレンダラーをチャットから操作するサンプルを試す場合は、[D3D12LookDevPTとの連携例](d3d12lookdevpt-integration.md)に、サーバー側の起動からTool Call結果の確認までを掲載しています。
 
 ## オフライン利用
 
@@ -90,5 +90,5 @@ D3D12/DXRレンダラーをチャットから操作するサンプルを試す�
 
 - 日常的な操作: [操作ガイド](user-guide.md)
 - MCPの接続: [MCP設定ガイド](mcp-configuration.md)
-- 実際のMCP連携例: [D3D12LookDevPTWinUI3との連携例](d3d12lookdevpt-integration.md)
+- 実際のMCP連携例: [D3D12LookDevPTとの連携例](d3d12lookdevpt-integration.md)
 - 問題が起きた場合: [トラブルシューティング](troubleshooting.md)

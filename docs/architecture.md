@@ -16,6 +16,8 @@ flowchart LR
     Agent --> Store["SQLite会話履歴"]
     UI --> Export["MarkdownConversationExporter"]
     Export --> Store
+    UI --> McpImport["McpProfileJsonImporter\nservers / mcpServers"]
+    McpImport --> Cred["Credential Manager"]
     Setup["初回セットアップ / 設定"] --> Installer["再開可能ダウンロード\nSHA-256検証"]
     Installer --> RuntimeFiles["CPU / CUDA / Vulkanランタイム"]
     Installer --> Models["Gemma 4 GGUF"]
@@ -138,6 +140,8 @@ MCPツール名は`<serverId>__<toolName>`に正規化します。OpenAI互換AP
 - 必要に応じてstandalone GETとContent-Length付き要求を使用する
 
 一つのMCPサーバーが失敗しても、他の接続と通常のローカルチャットは継続できます。
+
+`McpProfileJsonImporter`は`servers` / `mcpServers`形式を内部の`McpServerProfile`へ正規化します。秘密らしい環境変数とHTTPヘッダーは公開項目から分離し、設定保存前にCredential Manager参照へ変換します。同名設定の再インポートでは既存サーバーIDを維持するため、ツール承認ルールのスコープは変わりません。
 
 ## 保存と秘密情報
 
