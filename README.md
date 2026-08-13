@@ -19,6 +19,7 @@ Gemma 4 E2B/E4Bをローカルで実行し、MCPツールを人間の承認付�
 - MCP C# SDKによるstdio / Streamable HTTP接続
 - `servers` / `mcpServers`形式のJSONからのMCPサーバー設定インポート
 - Tool Callの引数検証、「今回のみ許可」「常に許可」「拒否」と実行結果表示
+- MCPの静的Resourceを検索・プレビューし、次のメッセージへテキスト資料として複数添付
 - SQLiteによる会話履歴、Markdown対応チャット表示、会話単位のMarkdown保存
 - Windows Credential Managerを利用したMCP資格情報の保存
 - 推論・モデル登録・MCP・承認・資格情報をまとめて初期化する設定リセット
@@ -26,7 +27,7 @@ Gemma 4 E2B/E4Bをローカルで実行し、MCPツールを人間の承認付�
 - self-contained `win-x64` Portable発行
 - 配布物へのライセンス通知同梱と、設定画面からのライセンス表示
 
-初期版では、テキストチャットとMCP Toolsを対象とします。クラウドLLM、マルチモーダル入力、MCP Resources / Prompts、旧SSE transport、OAuth、非Windows GUIは対象外です。
+現在は、テキストチャット、MCP Tools、静的なテキストResourceを対象とします。クラウドLLM、マルチモーダル入力、MCP Resource Templates / subscriptions、MCP Prompts、旧SSE transport、OAuth、非Windows GUIは対象外です。
 
 ## 画面とMCP連携例
 

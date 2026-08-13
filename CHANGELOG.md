@@ -8,6 +8,8 @@
 
 - `servers`または`mcpServers`形式のJSONからMCPサーバー設定をインポートする機能
 - インポートしたAuthorization、トークン、パスワードなどをWindows Credential Managerへ自動移行する処理
+- 接続中のMCPサーバーが公開する静的テキストResourceの検索、プレビュー、複数添付
+- Resource本文スナップショットの会話履歴保存、再生成、Markdown出力
 
 ### Changed
 

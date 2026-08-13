@@ -70,6 +70,12 @@ public partial class MainWindow : Window
         }
     }
 
+    private void AddResource_Click(object sender, RoutedEventArgs e)
+    {
+        var window = new ResourcePickerWindow(_services.GetRequiredService<ResourcePickerViewModel>()) { Owner = this };
+        if (window.ShowDialog() == true) _viewModel.AddPendingResources(window.SelectedResources);
+    }
+
     private static string CreateExportFileName(string title)
     {
         var invalid = Path.GetInvalidFileNameChars();

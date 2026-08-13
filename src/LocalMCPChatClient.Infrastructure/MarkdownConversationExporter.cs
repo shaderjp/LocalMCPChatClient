@@ -54,6 +54,28 @@ public sealed class MarkdownConversationExporter(IConversationStore conversation
             if (!string.IsNullOrWhiteSpace(message.Content)) builder.AppendLine(message.Content.TrimEnd());
             else if (string.IsNullOrWhiteSpace(message.ToolCallsJson)) builder.AppendLine("*(本文なし)*");
 
+            if (message.ResourceSnapshots is { Count: > 0 })
+            {
+                builder.AppendLine();
+                builder.AppendLine("### MCP Resources");
+                foreach (var resource in message.ResourceSnapshots)
+                {
+                    builder.AppendLine();
+                    builder.Append("#### ").AppendLine(SingleLine(resource.Name));
+                    builder.Append("- サーバー: `").Append(SingleLine(resource.ServerDisplayName)).AppendLine("`");
+                    builder.Append("- URI: `").Append(SingleLine(resource.Uri)).AppendLine("`");
+                    if (!string.IsNullOrWhiteSpace(resource.MimeType))
+                        builder.Append("- MIME type: `").Append(SingleLine(resource.MimeType)).AppendLine("`");
+                    builder.Append("- 読取日時: `").Append(FormatTimestamp(resource.ReadAt)).AppendLine("`");
+                    builder.Append("- 元のサイズ: `").Append(resource.OriginalByteCount).AppendLine(" bytes`");
+                    builder.Append("- 切り詰め: ").AppendLine(resource.WasTruncated ? "あり" : "なし");
+                    if (resource.SkippedBinaryParts > 0)
+                        builder.Append("- 省略したバイナリ部分: `").Append(resource.SkippedBinaryParts).AppendLine("`");
+                    builder.AppendLine();
+                    AppendCodeBlock(builder, resource.Content, "text");
+                }
+            }
+
             if (!string.IsNullOrWhiteSpace(message.ToolCallsJson))
             {
                 builder.AppendLine();

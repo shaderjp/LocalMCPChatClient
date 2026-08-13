@@ -12,6 +12,10 @@ flowchart LR
     Inference --> Runtime["llama-server\n127.0.0.1 + 一時APIキー"]
     Agent --> MCP["IMcpConnectionManager"]
     MCP --> Servers["MCP stdio / Streamable HTTP"]
+    UI --> ResourcePicker["Resource選択 / プレビュー"]
+    ResourcePicker --> MCP
+    MCP --> ResourceSnapshot["静的Text Resource\n256 KiB上限"]
+    ResourceSnapshot --> Agent
     Agent --> Approval["承認ルール / WPF確認画面"]
     Agent --> Store["SQLite会話履歴"]
     UI --> Export["MarkdownConversationExporter"]
@@ -121,6 +125,14 @@ sequenceDiagram
 
 MCPツール名は`<serverId>__<toolName>`に正規化します。OpenAI互換APIの64文字制限を超える場合や使用できない文字がある場合は、安定したハッシュ接尾辞を付けて短縮します。
 
+## MCP Resource添付
+
+`McpConnectionManager`は接続時にサーバーのResources capabilityを記録します。選択画面を開いたときだけ、対応サーバーごとに静的Resource一覧を取得し、Resource Templatesや変更通知は要求しません。一覧エラーは`McpResourceCatalog`へサーバー単位で格納し、ほかの接続の結果と分離します。
+
+送信時は`UserTurnInput.ResourceReferences`をすべて読み取ってからユーザーメッセージを保存します。`TextResourceContents`は結合し、Blob部分は省略数だけを記録します。テキストがない場合や読取に失敗した場合は保存前に送信を中止します。
+
+読取結果は`McpResourceSnapshot`としてユーザーメッセージの`resource_snapshots_json`へ保存します。各Resourceは256 KiB、全Resourceはコンテキスト長の25%を上限としてUTF-8境界で切り詰めます。推論時には保存済みスナップショットを信頼できない外部データとして明示した区切り内へ展開し、通常のユーザー指示と分離します。再生成はDBのスナップショットを再利用し、MCPサーバーを再読込しません。既存DBは初期化時に列の有無を確認して移行します。
+
 ## MCP接続
 
 `McpConnectionManager`は公式MCP C# SDKを使用します。
@@ -150,7 +162,7 @@ flowchart TD
     Settings["settings.json"] --> General["モデル / 推論 / MCPプロファイル"]
     Settings --> Ref["secretRef"]
     Ref --> Cred["Windows Credential Manager"]
-    History["history.db"] --> Conversations["会話 / メッセージ / Tool Call結果"]
+    History["history.db"] --> Conversations["会話 / メッセージ / Tool Call結果 / Resourceスナップショット"]
     Logs["Logs/app-YYYYMMDD.log"] --> Redaction["token / password / keyのマスク"]
 ```
 
@@ -160,7 +172,7 @@ flowchart TD
 
 設定の全リセットでは、推論プロセスとMCP接続を停止し、承認ルールのインメモリ状態、`LocalMCPChatClient/`接頭辞のCredential Manager項目、`settings.json`を初期化します。会話DB、モデル、ランタイム、ログは設定とは別のデータとして保持します。
 
-`MarkdownConversationExporter`は会話とメッセージを読み取り、UTF-8（BOMなし）で利用者が指定したパスへ書き出します。本文に加えてTool Call JSONとツール結果を保持し、コードフェンス内のバッククォート列に応じてフェンス長を調整します。
+`MarkdownConversationExporter`は会話とメッセージを読み取り、UTF-8（BOMなし）で利用者が指定したパスへ書き出します。本文に加えてTool Call JSON、ツール結果、Resourceのメタデータと保存済み本文を保持し、コードフェンス内のバッククォート列に応じてフェンス長を調整します。
 
 ## アーティファクト管理
 
@@ -181,6 +193,7 @@ flowchart TD
 - ローカル推論APIをループバックと一時キーで保護する
 - MCPリモート接続にHTTPSを要求する
 - Tool Callを実行前に検証・承認する
+- Resource本文を信頼できない外部データとしてユーザー指示から分離する
 - 秘密値をCredential Managerへ分離する
 - ログの一般的な秘密形式をマスクする
 
@@ -190,6 +203,6 @@ MCPサーバー自体のサンドボックス化は行いません。許可さ�
 
 - 単体テスト: 設定正規化、秘密参照、承認スコープ、ツール名、引数検証
 - 推論テスト: 偽のOpenAI互換APIによるSSE、Tool Call解析、キャンセル
-- MCP統合テスト: テスト用stdio / HTTPサーバーによる接続、列挙、実行、タイムアウト
-- 保存テスト: SQLiteの作成、追加、削除、再生成対象の復元
+- MCP統合テスト: テスト用stdio / HTTPサーバーによる接続、ToolsとResourcesの列挙、実行、読取、タイムアウト
+- 保存テスト: SQLiteの作成、移行、追加、削除、Resourceを含む再生成対象の復元
 - 手動E2E: E2B/E4B、CPU/CUDA/Vulkan、日本語Tool Call、オフライン再起動、Portable初回導入

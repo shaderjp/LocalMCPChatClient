@@ -42,6 +42,7 @@ public partial class App : Application
                 services.AddSingleton<MainViewModel>();
                 services.AddTransient<SetupViewModel>();
                 services.AddTransient<SettingsViewModel>();
+                services.AddTransient<ResourcePickerViewModel>();
                 services.AddSingleton<MainWindow>();
             })
             .Build();

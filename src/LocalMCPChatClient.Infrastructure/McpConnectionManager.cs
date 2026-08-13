@@ -16,6 +16,7 @@ public sealed class McpConnectionManager(
 {
     private const string ProtocolVersionHeaderName = "MCP-Protocol-Version";
     private const int MaxToolResultCharacters = 256 * 1024;
+    private const int MaxResourceBytes = 256 * 1024;
     private readonly ConcurrentDictionary<string, Connection> _connections = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<string, RegisteredTool> _tools = new(StringComparer.Ordinal);
     public event EventHandler<McpConnectionInfo>? ConnectionChanged;
@@ -30,7 +31,7 @@ public sealed class McpConnectionManager(
             var connection = await CreateConnectionAsync(profile, cancellationToken).ConfigureAwait(false);
             _connections[profile.Id] = connection;
             RegisterTools(connection);
-            var info = new McpConnectionInfo(profile.Id, profile.Name, McpConnectionState.Connected, ToolCount: connection.Tools.Count);
+            var info = CreateConnectionInfo(connection);
             Publish(info);
             return info;
         }
@@ -54,7 +55,7 @@ public sealed class McpConnectionManager(
         try
         {
             await using var connection = await CreateConnectionAsync(profile, cancellationToken).ConfigureAwait(false);
-            return new McpConnectionInfo(profile.Id, profile.Name, McpConnectionState.Connected, ToolCount: connection.Tools.Count);
+            return CreateConnectionInfo(connection);
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
@@ -82,10 +83,109 @@ public sealed class McpConnectionManager(
     {
         cancellationToken.ThrowIfCancellationRequested();
         IReadOnlyList<McpConnectionInfo> result = _connections.Values
-            .Select(connection => new McpConnectionInfo(connection.Profile.Id, connection.Profile.Name, McpConnectionState.Connected, ToolCount: connection.Tools.Count))
+            .Select(CreateConnectionInfo)
             .OrderBy(item => item.DisplayName, StringComparer.CurrentCultureIgnoreCase)
             .ToList();
         return Task.FromResult(result);
+    }
+
+    public async Task<IReadOnlyList<McpResourceCatalog>> GetResourceCatalogsAsync(CancellationToken cancellationToken = default)
+    {
+        var catalogs = new List<McpResourceCatalog>();
+        foreach (var connection in _connections.Values.OrderBy(item => item.Profile.Name, StringComparer.CurrentCultureIgnoreCase))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (!connection.SupportsResources)
+            {
+                catalogs.Add(new McpResourceCatalog(connection.Profile.Id, connection.Profile.Name, []));
+                continue;
+            }
+
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            timeout.CancelAfter(TimeSpan.FromSeconds(Math.Clamp(connection.Profile.TimeoutSeconds, 1, 3600)));
+            try
+            {
+                var resources = await connection.Client.ListResourcesAsync(cancellationToken: timeout.Token).ConfigureAwait(false);
+                catalogs.Add(new McpResourceCatalog(
+                    connection.Profile.Id,
+                    connection.Profile.Name,
+                    resources.Select(resource => new McpResourceDefinition(
+                            connection.Profile.Id,
+                            connection.Profile.Name,
+                            resource.Uri,
+                            resource.Title ?? resource.Name,
+                            resource.Description,
+                            resource.MimeType,
+                            resource.ProtocolResource.Size))
+                        .OrderBy(resource => resource.Name, StringComparer.CurrentCultureIgnoreCase)
+                        .ThenBy(resource => resource.Uri, StringComparer.Ordinal)
+                        .ToList()));
+            }
+            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+            {
+                catalogs.Add(new McpResourceCatalog(connection.Profile.Id, connection.Profile.Name, [], "Resource一覧の取得がタイムアウトしました。"));
+            }
+            catch (Exception exception)
+            {
+                logger.LogWarning("Failed to list MCP resources for server {ServerId}: {ErrorType}",
+                    connection.Profile.Id, exception.GetType().Name);
+                catalogs.Add(new McpResourceCatalog(connection.Profile.Id, connection.Profile.Name, [], "Resource一覧を取得できませんでした: " + exception.Message));
+            }
+        }
+        return catalogs;
+    }
+
+    public async Task<McpResourceSnapshot> ReadResourceAsync(McpResourceReference reference, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(reference);
+        if (!_connections.TryGetValue(reference.ServerId, out var connection))
+            throw new InvalidOperationException($"MCPサーバー '{reference.ServerDisplayName}' は切断されています。");
+        if (!connection.SupportsResources)
+            throw new InvalidOperationException($"MCPサーバー '{reference.ServerDisplayName}' はResourceに対応していません。");
+
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeout.CancelAfter(TimeSpan.FromSeconds(Math.Clamp(connection.Profile.TimeoutSeconds, 1, 3600)));
+        try
+        {
+            var result = await connection.Client.ReadResourceAsync(reference.Uri, cancellationToken: timeout.Token).ConfigureAwait(false);
+            var textParts = result.Contents.OfType<TextResourceContents>()
+                .Select(item => item.Text)
+                .Where(item => !string.IsNullOrEmpty(item))
+                .ToList();
+            var skippedBinaryParts = result.Contents.Count(item => item is BlobResourceContents);
+            if (textParts.Count == 0)
+            {
+                if (skippedBinaryParts > 0)
+                    throw new NotSupportedException("このResourceはバイナリ内容だけを返すため、v1では添付できません。");
+                throw new InvalidOperationException("このResourceはテキスト内容を返しませんでした。");
+            }
+
+            var content = string.Join(Environment.NewLine + Environment.NewLine, textParts);
+            var originalByteCount = Encoding.UTF8.GetByteCount(content);
+            var truncated = originalByteCount > MaxResourceBytes;
+            if (truncated) content = ResourceSnapshotBudget.TruncateUtf8(content, MaxResourceBytes);
+            return new McpResourceSnapshot(
+                reference.ServerId,
+                connection.Profile.Name,
+                reference.Uri,
+                reference.Name,
+                reference.MimeType,
+                content,
+                DateTimeOffset.UtcNow,
+                originalByteCount,
+                truncated,
+                skippedBinaryParts);
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            throw new TimeoutException($"Resource '{reference.Name}' の読取がタイムアウトしました。");
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException and not TimeoutException and not NotSupportedException)
+        {
+            logger.LogWarning("Failed to read MCP resource from server {ServerId}: {ErrorType}",
+                reference.ServerId, exception.GetType().Name);
+            throw new InvalidOperationException($"Resource '{reference.Name}' を読み取れませんでした: {exception.Message}", exception);
+        }
     }
 
     public Task<IReadOnlyList<ToolDefinition>> GetToolsAsync(CancellationToken cancellationToken = default)
@@ -162,7 +262,9 @@ public sealed class McpConnectionManager(
                 clientOptions: clientOptions,
                 loggerFactory: loggerFactory,
                 cancellationToken: timeout.Token).ConfigureAwait(false);
-            var tools = await client.ListToolsAsync(cancellationToken: timeout.Token).ConfigureAwait(false);
+            IList<McpClientTool> tools = client.ServerCapabilities.Tools is null
+                ? []
+                : await client.ListToolsAsync(cancellationToken: timeout.Token).ConfigureAwait(false);
             return new Connection(profile, client, tools);
         }
         catch
@@ -320,11 +422,19 @@ public sealed class McpConnectionManager(
         }
     }
 
+    private static McpConnectionInfo CreateConnectionInfo(Connection connection) => new(
+        connection.Profile.Id,
+        connection.Profile.Name,
+        McpConnectionState.Connected,
+        ToolCount: connection.Tools.Count,
+        SupportsResources: connection.SupportsResources);
+
     private sealed class Connection(McpServerProfile profile, McpClient client, IList<McpClientTool> tools) : IAsyncDisposable
     {
         public McpServerProfile Profile { get; } = profile;
         public McpClient Client { get; } = client;
         public IList<McpClientTool> Tools { get; } = tools;
+        public bool SupportsResources => Client.ServerCapabilities.Resources is not null;
         public ValueTask DisposeAsync() => Client.DisposeAsync();
     }
 }

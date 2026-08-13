@@ -1,3 +1,4 @@
+using System.Text.Json;
 using LocalMCPChatClient.Core;
 using Microsoft.Data.Sqlite;
 
@@ -45,6 +46,20 @@ public sealed class SqliteConversationStore(IAppPaths paths) : IConversationStor
                 ON messages(conversation_id, created_at);
                 """;
             await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+            var columns = connection.CreateCommand();
+            columns.CommandText = "PRAGMA table_info(messages)";
+            var hasResourceSnapshots = false;
+            await using (var reader = await columns.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false))
+            {
+                while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+                    hasResourceSnapshots |= reader.GetString(1).Equals("resource_snapshots_json", StringComparison.OrdinalIgnoreCase);
+            }
+            if (!hasResourceSnapshots)
+            {
+                var migration = connection.CreateCommand();
+                migration.CommandText = "ALTER TABLE messages ADD COLUMN resource_snapshots_json TEXT NULL";
+                await migration.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+            }
             _initialized = true;
         }
         finally
@@ -107,7 +122,7 @@ public sealed class SqliteConversationStore(IAppPaths paths) : IConversationStor
         await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
         var command = connection.CreateCommand();
         command.CommandText = """
-            SELECT id, conversation_id, role, content, created_at, tool_call_id, tool_name, tool_calls_json, is_error
+            SELECT id, conversation_id, role, content, created_at, tool_call_id, tool_name, tool_calls_json, is_error, resource_snapshots_json
             FROM messages WHERE conversation_id = $conversation ORDER BY created_at, rowid
             """;
         command.Parameters.AddWithValue("$conversation", conversationId.ToString("D"));
@@ -118,7 +133,8 @@ public sealed class SqliteConversationStore(IAppPaths paths) : IConversationStor
                 Guid.Parse(reader.GetString(0)), Guid.Parse(reader.GetString(1)), (ChatRole)reader.GetInt32(2),
                 reader.GetString(3), DateTimeOffset.Parse(reader.GetString(4)),
                 reader.IsDBNull(5) ? null : reader.GetString(5), reader.IsDBNull(6) ? null : reader.GetString(6),
-                reader.IsDBNull(7) ? null : reader.GetString(7), reader.GetInt32(8) != 0));
+                reader.IsDBNull(7) ? null : reader.GetString(7), reader.GetInt32(8) != 0,
+                reader.IsDBNull(9) ? null : JsonSerializer.Deserialize<List<McpResourceSnapshot>>(reader.GetString(9))));
         }
         return result;
     }
@@ -132,8 +148,8 @@ public sealed class SqliteConversationStore(IAppPaths paths) : IConversationStor
         var command = connection.CreateCommand();
         command.Transaction = (SqliteTransaction)transaction;
         command.CommandText = """
-            INSERT INTO messages(id,conversation_id,role,content,created_at,tool_call_id,tool_name,tool_calls_json,is_error)
-            VALUES($id,$conversation,$role,$content,$created,$call,$tool,$calls,$error);
+            INSERT INTO messages(id,conversation_id,role,content,created_at,tool_call_id,tool_name,tool_calls_json,is_error,resource_snapshots_json)
+            VALUES($id,$conversation,$role,$content,$created,$call,$tool,$calls,$error,$resources);
             UPDATE conversations SET updated_at=$updated WHERE id=$conversation;
             """;
         command.Parameters.AddWithValue("$id", message.Id.ToString("D"));
@@ -145,12 +161,15 @@ public sealed class SqliteConversationStore(IAppPaths paths) : IConversationStor
         command.Parameters.AddWithValue("$tool", (object?)message.ToolName ?? DBNull.Value);
         command.Parameters.AddWithValue("$calls", (object?)message.ToolCallsJson ?? DBNull.Value);
         command.Parameters.AddWithValue("$error", message.IsError ? 1 : 0);
+        command.Parameters.AddWithValue("$resources", message.ResourceSnapshots is { Count: > 0 }
+            ? JsonSerializer.Serialize(message.ResourceSnapshots)
+            : DBNull.Value);
         command.Parameters.AddWithValue("$updated", DateTimeOffset.UtcNow.ToString("O"));
         await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
         await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
     }
 
-    public async Task<string?> DeleteLastTurnAsync(Guid conversationId, CancellationToken cancellationToken = default)
+    public async Task<UserTurnInput?> DeleteLastTurnAsync(Guid conversationId, CancellationToken cancellationToken = default)
     {
         await InitializeAsync(cancellationToken).ConfigureAwait(false);
         await using var connection = CreateConnection();
@@ -159,16 +178,20 @@ public sealed class SqliteConversationStore(IAppPaths paths) : IConversationStor
 
         var find = connection.CreateCommand();
         find.Transaction = (SqliteTransaction)transaction;
-        find.CommandText = "SELECT rowid, content FROM messages WHERE conversation_id=$id AND role=$role ORDER BY rowid DESC LIMIT 1";
+        find.CommandText = "SELECT rowid, content, resource_snapshots_json FROM messages WHERE conversation_id=$id AND role=$role ORDER BY rowid DESC LIMIT 1";
         find.Parameters.AddWithValue("$id", conversationId.ToString("D"));
         find.Parameters.AddWithValue("$role", (int)ChatRole.User);
         long rowId;
         string content;
+        IReadOnlyList<McpResourceSnapshot> snapshots;
         await using (var reader = await find.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false))
         {
             if (!await reader.ReadAsync(cancellationToken).ConfigureAwait(false)) return null;
             rowId = reader.GetInt64(0);
             content = reader.GetString(1);
+            snapshots = reader.IsDBNull(2)
+                ? []
+                : JsonSerializer.Deserialize<List<McpResourceSnapshot>>(reader.GetString(2)) ?? [];
         }
 
         var delete = connection.CreateCommand();
@@ -182,7 +205,7 @@ public sealed class SqliteConversationStore(IAppPaths paths) : IConversationStor
         delete.Parameters.AddWithValue("$updated", DateTimeOffset.UtcNow.ToString("O"));
         await delete.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
         await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
-        return content;
+        return new UserTurnInput { Text = content, ResourceSnapshots = snapshots };
     }
 
     public async Task RenameAsync(Guid conversationId, string title, CancellationToken cancellationToken = default)
