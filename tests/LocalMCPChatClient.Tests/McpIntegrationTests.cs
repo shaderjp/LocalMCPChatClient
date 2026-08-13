@@ -26,12 +26,13 @@ public sealed class McpIntegrationTests
             Name = "Test MCP",
             Transport = McpTransportKind.Stdio,
             Command = serverPath,
-            TimeoutSeconds = 5
+            TimeoutSeconds = 1
         };
 
         var connection = await manager.ConnectAsync(profile);
         Assert.Equal(McpConnectionState.Connected, connection.State);
         Assert.Equal(2, connection.ToolCount);
+        Assert.True(connection.SupportsResources);
 
         var tools = await manager.GetToolsAsync();
         var echo = Assert.Single(tools, tool => tool.OriginalName == "echo");
@@ -44,6 +45,40 @@ public sealed class McpIntegrationTests
         var timeout = await manager.CallToolAsync(new ToolCallRequest("call-2", wait.NamespacedName, "{\"milliseconds\":10000}"));
         Assert.True(timeout.IsError);
         Assert.Contains("タイムアウト", timeout.Content);
+
+        var catalog = Assert.Single(await manager.GetResourceCatalogsAsync());
+        Assert.Null(catalog.Error);
+        Assert.Equal(6, catalog.Resources.Count);
+        var welcome = Assert.Single(catalog.Resources, resource => resource.Uri == "test://documents/welcome");
+        var welcomeSnapshot = await manager.ReadResourceAsync(McpResourceReference.FromDefinition(welcome));
+        Assert.Contains("こんにちは", welcomeSnapshot.Content);
+        Assert.False(welcomeSnapshot.WasTruncated);
+
+        var multipart = Assert.Single(catalog.Resources, resource => resource.Uri == "test://documents/multipart");
+        var multipartSnapshot = await manager.ReadResourceAsync(McpResourceReference.FromDefinition(multipart));
+        Assert.Contains("part-one", multipartSnapshot.Content);
+        Assert.Contains("part-two", multipartSnapshot.Content);
+
+        var mixed = Assert.Single(catalog.Resources, resource => resource.Uri == "test://documents/mixed");
+        var mixedSnapshot = await manager.ReadResourceAsync(McpResourceReference.FromDefinition(mixed));
+        Assert.Equal("visible-text", mixedSnapshot.Content);
+        Assert.Equal(1, mixedSnapshot.SkippedBinaryParts);
+
+        var blob = Assert.Single(catalog.Resources, resource => resource.Uri == "test://documents/blob");
+        await Assert.ThrowsAsync<NotSupportedException>(() => manager.ReadResourceAsync(McpResourceReference.FromDefinition(blob)));
+
+        var large = Assert.Single(catalog.Resources, resource => resource.Uri == "test://documents/large");
+        var largeSnapshot = await manager.ReadResourceAsync(McpResourceReference.FromDefinition(large));
+        Assert.True(largeSnapshot.WasTruncated);
+        Assert.True(System.Text.Encoding.UTF8.GetByteCount(largeSnapshot.Content) <= 256 * 1024);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => manager.ReadResourceAsync(
+            new McpResourceReference(profile.Id, profile.Name, "test://documents/missing", "missing")));
+        var slow = Assert.Single(catalog.Resources, resource => resource.Uri == "test://documents/slow");
+        await Assert.ThrowsAsync<TimeoutException>(() => manager.ReadResourceAsync(McpResourceReference.FromDefinition(slow)));
+        using var cancellation = new CancellationTokenSource(TimeSpan.FromMilliseconds(100));
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => manager.ReadResourceAsync(
+            McpResourceReference.FromDefinition(slow), cancellation.Token));
 
         await manager.DisconnectAsync(profile.Id);
         Assert.Empty(await manager.GetConnectionsAsync());
@@ -138,9 +173,14 @@ public sealed class McpIntegrationTests
             });
 
             Assert.Equal(McpConnectionState.Connected, connection.State);
+            Assert.True(connection.SupportsResources);
             var echo = Assert.Single(await manager.GetToolsAsync(), tool => tool.OriginalName == "echo");
             var result = await manager.CallToolAsync(new ToolCallRequest("http-call", echo.NamespacedName, "{\"text\":\"http\"}"));
             Assert.False(result.IsError);
+            var catalog = Assert.Single(await manager.GetResourceCatalogsAsync());
+            var welcome = Assert.Single(catalog.Resources, resource => resource.Uri == "test://documents/welcome");
+            var snapshot = await manager.ReadResourceAsync(McpResourceReference.FromDefinition(welcome));
+            Assert.Contains("こんにちは", snapshot.Content);
             Assert.Contains("echo:http", result.Content);
         }
         finally
@@ -185,6 +225,7 @@ public sealed class McpIntegrationTests
             });
 
             Assert.Equal(McpConnectionState.Connected, connection.State);
+            Assert.True(connection.SupportsResources);
             var echo = Assert.Single(await manager.GetToolsAsync(), tool => tool.OriginalName == "echo");
             var result = await manager.CallToolAsync(new ToolCallRequest("legacy-http-call", echo.NamespacedName, "{\"text\":\"legacy\"}"));
             Assert.False(result.IsError);

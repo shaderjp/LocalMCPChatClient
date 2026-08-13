@@ -11,7 +11,7 @@ public enum McpConnectionState { Disconnected, Connecting, Connected, Faulted }
 public enum ApprovalDecision { Ask, Allow, Deny }
 public enum ApprovalResponse { AllowOnce, AlwaysAllow, Deny }
 public enum ArtifactKind { Runtime, Model }
-public enum AgentEventKind { TextDelta, ToolApprovalRequired, ToolStarted, ToolCompleted, Warning, Completed }
+public enum AgentEventKind { UserMessageStored, TextDelta, ToolApprovalRequired, ToolStarted, ToolCompleted, Warning, Completed }
 
 public sealed record Conversation(
     Guid Id,
@@ -29,7 +29,57 @@ public sealed record ChatMessage(
     string? ToolCallId = null,
     string? ToolName = null,
     string? ToolCallsJson = null,
-    bool IsError = false);
+    bool IsError = false,
+    IReadOnlyList<McpResourceSnapshot>? ResourceSnapshots = null);
+
+public sealed record McpResourceDefinition(
+    string ServerId,
+    string ServerDisplayName,
+    string Uri,
+    string Name,
+    string? Description = null,
+    string? MimeType = null,
+    long? Size = null);
+
+public sealed record McpResourceReference(
+    string ServerId,
+    string ServerDisplayName,
+    string Uri,
+    string Name,
+    string? MimeType = null)
+{
+    public static McpResourceReference FromDefinition(McpResourceDefinition definition) => new(
+        definition.ServerId,
+        definition.ServerDisplayName,
+        definition.Uri,
+        definition.Name,
+        definition.MimeType);
+}
+
+public sealed record McpResourceSnapshot(
+    string ServerId,
+    string ServerDisplayName,
+    string Uri,
+    string Name,
+    string? MimeType,
+    string Content,
+    DateTimeOffset ReadAt,
+    int OriginalByteCount,
+    bool WasTruncated = false,
+    int SkippedBinaryParts = 0);
+
+public sealed record McpResourceCatalog(
+    string ServerId,
+    string ServerDisplayName,
+    IReadOnlyList<McpResourceDefinition> Resources,
+    string? Error = null);
+
+public sealed record UserTurnInput
+{
+    public string Text { get; init; } = string.Empty;
+    public IReadOnlyList<McpResourceReference> ResourceReferences { get; init; } = [];
+    public IReadOnlyList<McpResourceSnapshot> ResourceSnapshots { get; init; } = [];
+}
 
 public sealed record ToolDefinition(
     string NamespacedName,
@@ -142,7 +192,8 @@ public sealed record McpConnectionInfo(
     string DisplayName,
     McpConnectionState State,
     string? Error = null,
-    int ToolCount = 0);
+    int ToolCount = 0,
+    bool SupportsResources = false);
 
 public sealed record ToolApprovalRule(string ServerId, string ToolName, ApprovalDecision Decision);
 
@@ -215,7 +266,8 @@ public sealed record AgentEvent(
     string? Text = null,
     ToolCallRequest? ToolCall = null,
     McpToolResult? ToolResult = null,
-    TurnPerformance? Performance = null);
+    TurnPerformance? Performance = null,
+    IReadOnlyList<McpResourceSnapshot>? ResourceSnapshots = null);
 
 public sealed record AppSettings
 {

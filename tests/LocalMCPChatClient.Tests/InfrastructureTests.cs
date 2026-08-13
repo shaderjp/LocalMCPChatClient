@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Headers;
 using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using LocalMCPChatClient.Core;
 using LocalMCPChatClient.Infrastructure;
@@ -223,13 +224,15 @@ public sealed class ConversationStoreTests : IDisposable
         var conversation = await store.CreateAsync("test");
         await store.AppendMessageAsync(new ChatMessage(Guid.NewGuid(), conversation.Id, ChatRole.User, "first", DateTimeOffset.UtcNow));
         await store.AppendMessageAsync(new ChatMessage(Guid.NewGuid(), conversation.Id, ChatRole.Assistant, "first answer", DateTimeOffset.UtcNow));
-        await store.AppendMessageAsync(new ChatMessage(Guid.NewGuid(), conversation.Id, ChatRole.User, "again", DateTimeOffset.UtcNow));
+        var snapshot = new McpResourceSnapshot("server", "Test MCP", "test://resource", "Resource", "text/plain", "snapshot", DateTimeOffset.UtcNow, 8);
+        await store.AppendMessageAsync(new ChatMessage(Guid.NewGuid(), conversation.Id, ChatRole.User, "again", DateTimeOffset.UtcNow, ResourceSnapshots: [snapshot]));
         await store.AppendMessageAsync(new ChatMessage(Guid.NewGuid(), conversation.Id, ChatRole.Assistant, "", DateTimeOffset.UtcNow, ToolCallsJson: "[]"));
         await store.AppendMessageAsync(new ChatMessage(Guid.NewGuid(), conversation.Id, ChatRole.Tool, "result", DateTimeOffset.UtcNow));
 
-        var text = await store.DeleteLastTurnAsync(conversation.Id);
+        var input = await store.DeleteLastTurnAsync(conversation.Id);
 
-        Assert.Equal("again", text);
+        Assert.Equal("again", input?.Text);
+        Assert.Equal("snapshot", Assert.Single(input!.ResourceSnapshots).Content);
         var remaining = await store.GetMessagesAsync(conversation.Id);
         Assert.Equal([ChatRole.User, ChatRole.Assistant], remaining.Select(item => item.Role));
     }
@@ -248,6 +251,32 @@ public sealed class StreamingTextBufferTests
         Assert.False(buffer.Append("初", 10));
         Assert.True(buffer.Append("応答", 50));
         Assert.Equal("最初応答", buffer.Content);
+    }
+
+    [Fact]
+    public async Task Resource_snapshots_round_trip_and_existing_database_is_migrated()
+    {
+        using var paths = new TestPaths();
+        paths.EnsureCreated();
+        await using (var connection = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={paths.DatabasePath}"))
+        {
+            await connection.OpenAsync();
+            var command = connection.CreateCommand();
+            command.CommandText = """
+                CREATE TABLE conversations (id TEXT PRIMARY KEY, title TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, model_id TEXT NULL);
+                CREATE TABLE messages (id TEXT PRIMARY KEY, conversation_id TEXT NOT NULL, role INTEGER NOT NULL, content TEXT NOT NULL, created_at TEXT NOT NULL, tool_call_id TEXT NULL, tool_name TEXT NULL, tool_calls_json TEXT NULL, is_error INTEGER NOT NULL DEFAULT 0);
+                """;
+            await command.ExecuteNonQueryAsync();
+        }
+
+        var store = new SqliteConversationStore(paths);
+        var conversation = await store.CreateAsync("migration");
+        var snapshot = new McpResourceSnapshot("server", "MCP", "test://doc", "Doc", "text/plain", "本文", DateTimeOffset.UtcNow, 6, true, 1);
+        await store.AppendMessageAsync(new ChatMessage(Guid.NewGuid(), conversation.Id, ChatRole.User, "質問", DateTimeOffset.UtcNow, ResourceSnapshots: [snapshot]));
+
+        var loaded = Assert.Single(await store.GetMessagesAsync(conversation.Id));
+        var loadedSnapshot = Assert.Single(loaded.ResourceSnapshots!);
+        Assert.Equal(snapshot, loadedSnapshot);
     }
 }
 
@@ -308,8 +337,9 @@ public sealed class MarkdownConversationExporterTests : IDisposable
         var store = new SqliteConversationStore(_paths);
         var conversation = await store.CreateAsync("エクスポート確認", "gemma-4-e2b-it-q4");
         var now = DateTimeOffset.Parse("2026-08-02T12:34:56Z");
+        var snapshot = new McpResourceSnapshot("docs", "Docs MCP", "docs://guide", "操作ガイド", "text/plain", "Resource本文", now.AddMinutes(-1), 16, true, 1);
         await store.AppendMessageAsync(new ChatMessage(Guid.NewGuid(), conversation.Id, ChatRole.User,
-            "## 質問\n東京の天気は？", now));
+            "## 質問\n東京の天気は？", now, ResourceSnapshots: [snapshot]));
         await store.AppendMessageAsync(new ChatMessage(Guid.NewGuid(), conversation.Id, ChatRole.Assistant,
             string.Empty, now.AddSeconds(1), ToolCallsJson: "[{\"id\":\"call-1\",\"function\":{\"name\":\"weather__forecast\",\"arguments\":\"{\\\"city\\\":\\\"東京\\\"}\"}}]"));
         await store.AppendMessageAsync(new ChatMessage(Guid.NewGuid(), conversation.Id, ChatRole.Tool,
@@ -331,6 +361,32 @@ public sealed class MarkdownConversationExporterTests : IDisposable
         Assert.Contains("**状態:** 失敗", markdown);
         Assert.Contains("**Tool Call ID:** `call-1`", markdown);
         Assert.Contains("取得に失敗しました。", markdown);
+        Assert.Contains("### MCP Resources", markdown);
+        Assert.Contains("#### 操作ガイド", markdown);
+        Assert.Contains("- サーバー: `Docs MCP`", markdown);
+        Assert.Contains("- URI: `docs://guide`", markdown);
+        Assert.Contains("- 切り詰め: あり", markdown);
+        Assert.Contains("- 省略したバイナリ部分: `1`", markdown);
+        Assert.Contains("Resource本文", markdown);
+    }
+
+    [Fact]
+    public void Resource_budget_is_even_utf8_safe_and_marks_truncation()
+    {
+        var snapshots = new[]
+        {
+            new McpResourceSnapshot("a", "A", "test://a", "A", "text/plain", new string('あ', 100), DateTimeOffset.UtcNow, 300),
+            new McpResourceSnapshot("b", "B", "test://b", "B", "text/plain", string.Concat(Enumerable.Repeat("😀", 100)), DateTimeOffset.UtcNow, 400)
+        };
+
+        var result = ResourceSnapshotBudget.Apply(snapshots, 80);
+
+        Assert.All(result, snapshot =>
+        {
+            Assert.True(snapshot.WasTruncated);
+            Assert.True(Encoding.UTF8.GetByteCount(snapshot.Content) <= 30);
+            Assert.False(snapshot.Content.EndsWith("�", StringComparison.Ordinal));
+        });
     }
 
     [Fact]

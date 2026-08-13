@@ -25,6 +25,7 @@ public sealed partial class MainViewModel(
     public ObservableCollection<ConversationItemViewModel> Conversations { get; } = [];
     public ObservableCollection<ChatItemViewModel> Messages { get; } = [];
     public ObservableCollection<ModelProfile> Models { get; } = [];
+    public ObservableCollection<PendingResourceViewModel> PendingResources { get; } = [];
     public IReadOnlyList<InferenceMode> InferenceModes { get; } = Enum.GetValues<InferenceMode>();
     public event EventHandler? SettingsRequested;
 
@@ -100,10 +101,14 @@ public sealed partial class MainViewModel(
     [RelayCommand(CanExecute = nameof(CanSend))]
     private async Task SendAsync()
     {
-        if (SelectedConversation is null || SelectedModel is null || string.IsNullOrWhiteSpace(InputText)) return;
-        var text = InputText.Trim();
-        InputText = string.Empty;
-        await RunTextAsync(text);
+        if (SelectedConversation is null || SelectedModel is null ||
+            (string.IsNullOrWhiteSpace(InputText) && PendingResources.Count == 0)) return;
+        var input = new UserTurnInput
+        {
+            Text = InputText.Trim(),
+            ResourceReferences = PendingResources.Select(item => item.Reference).ToList()
+        };
+        await RunInputAsync(input);
     }
 
     [RelayCommand(CanExecute = nameof(CanRegenerate))]
@@ -111,25 +116,25 @@ public sealed partial class MainViewModel(
     {
         if (SelectedConversation is null) return;
         var conversationId = SelectedConversation.Id;
-        var text = await conversationStore.DeleteLastTurnAsync(conversationId);
-        if (string.IsNullOrWhiteSpace(text)) return;
+        var input = await conversationStore.DeleteLastTurnAsync(conversationId);
+        if (input is null) return;
         await LoadMessagesAsync(conversationId);
-        await RunTextAsync(text);
+        await RunInputAsync(input);
     }
 
-    private async Task RunTextAsync(string text)
+    private async Task RunInputAsync(UserTurnInput input)
     {
         if (SelectedConversation is null || SelectedModel is null) return;
         IsBusy = true;
         SendCommand.NotifyCanExecuteChanged();
         RegenerateCommand.NotifyCanExecuteChanged();
         _turnCancellation = new CancellationTokenSource();
-        var assistant = new ChatItemViewModel(ChatRole.Assistant, string.Empty) { IsStreaming = true };
+        ChatItemViewModel? assistant = null;
+        var userMessageStored = false;
         var assistantBuffer = new StreamingTextBuffer();
         var renderTimer = Stopwatch.StartNew();
         TurnPerformance? performance = null;
-        Messages.Add(new ChatItemViewModel(ChatRole.User, text));
-        Messages.Add(assistant);
+        StatusText = input.ResourceReferences.Count > 0 ? "Resourceを読み取り中…" : "送信中…";
 
         try
         {
@@ -143,14 +148,24 @@ public sealed partial class MainViewModel(
                 CustomRuntimePath = _settings.CustomRuntimePath
             };
             await foreach (var item in agentChatService.RunTurnAsync(
-                SelectedConversation.Id, text, profile, SelectedModel, _turnCancellation.Token))
+                SelectedConversation.Id, input, profile, SelectedModel, _turnCancellation.Token))
             {
                 switch (item.Kind)
                 {
+                    case AgentEventKind.UserMessageStored:
+                        userMessageStored = true;
+                        InputText = string.Empty;
+                        PendingResources.Clear();
+                        SendCommand.NotifyCanExecuteChanged();
+                        Messages.Add(new ChatItemViewModel(ChatRole.User, input.Text, resources: item.ResourceSnapshots));
+                        assistant = new ChatItemViewModel(ChatRole.Assistant, string.Empty) { IsStreaming = true };
+                        Messages.Add(assistant);
+                        StatusText = "生成を開始しています…";
+                        break;
                     case AgentEventKind.TextDelta:
                         if (assistantBuffer.Append(item.Text, renderTimer.ElapsedMilliseconds))
                         {
-                            assistant.Content = assistantBuffer.Content;
+                            if (assistant is not null) assistant.Content = assistantBuffer.Content;
                             renderTimer.Restart();
                         }
                         StatusText = "生成中…";
@@ -179,8 +194,11 @@ public sealed partial class MainViewModel(
                         break;
                 }
             }
-            assistant.Content = assistantBuffer.Content;
-            assistant.IsStreaming = false;
+            if (assistant is not null)
+            {
+                assistant.Content = assistantBuffer.Content;
+                assistant.IsStreaming = false;
+            }
             StatusText = performance is null
                 ? $"完了 · {FormatBackend(runtimeManager.State.Backend)}"
                 : $"完了 · {FormatBackend(performance.Backend)} · 初回 {performance.TimeToFirstTokenMilliseconds / 1000d:F2}秒 · {performance.GeneratedTokensPerSecond:F1} tok/s";
@@ -190,8 +208,11 @@ public sealed partial class MainViewModel(
         }
         catch (OperationCanceledException)
         {
-            assistant.Content = assistantBuffer.Content;
-            assistant.IsStreaming = false;
+            if (assistant is not null)
+            {
+                assistant.Content = assistantBuffer.Content;
+                assistant.IsStreaming = false;
+            }
             StatusText = "生成を停止しました";
         }
         catch (Exception exception)
@@ -200,10 +221,13 @@ public sealed partial class MainViewModel(
                 ? "\n設定でCPU推論を選択して再試行できます。"
                 : string.Empty;
             StatusText = "エラー: " + exception.Message;
-            if (assistantBuffer.Length > 0) assistantBuffer.AppendLine().AppendLine();
-            assistantBuffer.Append("エラー: ").Append(exception.Message).Append(retryHint);
-            assistant.Content = assistantBuffer.Content;
-            assistant.IsStreaming = false;
+            if (userMessageStored && assistant is not null)
+            {
+                if (assistantBuffer.Length > 0) assistantBuffer.AppendLine().AppendLine();
+                assistantBuffer.Append("エラー: ").Append(exception.Message).Append(retryHint);
+                assistant.Content = assistantBuffer.Content;
+                assistant.IsStreaming = false;
+            }
         }
         finally
         {
@@ -216,12 +240,13 @@ public sealed partial class MainViewModel(
 
         void FlushAssistant()
         {
-            if (assistant.Content != assistantBuffer.Content) assistant.Content = assistantBuffer.Content;
+            if (assistant is not null && assistant.Content != assistantBuffer.Content) assistant.Content = assistantBuffer.Content;
             renderTimer.Restart();
         }
     }
 
-    private bool CanSend() => !IsBusy && SelectedConversation is not null && SelectedModel is not null && !string.IsNullOrWhiteSpace(InputText);
+    private bool CanSend() => !IsBusy && SelectedConversation is not null && SelectedModel is not null &&
+        (!string.IsNullOrWhiteSpace(InputText) || PendingResources.Count > 0);
     private bool CanRegenerate() => !IsBusy && SelectedConversation is not null && Messages.Any(message => message.Role == ChatRole.User);
 
     [RelayCommand]
@@ -229,6 +254,24 @@ public sealed partial class MainViewModel(
 
     [RelayCommand]
     private void OpenSettings() => SettingsRequested?.Invoke(this, EventArgs.Empty);
+
+    [RelayCommand]
+    private void RemovePendingResource(PendingResourceViewModel? resource)
+    {
+        if (resource is null) return;
+        PendingResources.Remove(resource);
+        SendCommand.NotifyCanExecuteChanged();
+    }
+
+    public void AddPendingResources(IEnumerable<McpResourceDefinition> resources)
+    {
+        foreach (var definition in resources)
+        {
+            if (PendingResources.Any(item => item.Reference.ServerId == definition.ServerId && item.Reference.Uri == definition.Uri)) continue;
+            PendingResources.Add(new PendingResourceViewModel(McpResourceReference.FromDefinition(definition)));
+        }
+        SendCommand.NotifyCanExecuteChanged();
+    }
 
     public async Task ExportSelectedConversationAsync(string destinationPath)
     {
@@ -316,7 +359,7 @@ public sealed partial class MainViewModel(
             var content = message.Role == ChatRole.Tool
                 ? FormatToolCard(argumentsByCallId.GetValueOrDefault(message.ToolCallId ?? string.Empty), message.Content, message.IsError)
                 : message.Content;
-            Messages.Add(new ChatItemViewModel(message.Role, content, message.IsError, message.ToolName));
+            Messages.Add(new ChatItemViewModel(message.Role, content, message.IsError, message.ToolName, message.ResourceSnapshots));
         }
         RegenerateCommand.NotifyCanExecuteChanged();
     }
@@ -359,6 +402,8 @@ public sealed partial class MainViewModel(
     private async Task RefreshMcpStatusAsync()
     {
         var connections = await mcpManager.GetConnectionsAsync();
-        McpStatusText = connections.Count == 0 ? "MCP: 未接続" : $"MCP: {connections.Count} 接続 / {connections.Sum(item => item.ToolCount)} ツール";
+        McpStatusText = connections.Count == 0
+            ? "MCP: 未接続"
+            : $"MCP: {connections.Count} 接続 / {connections.Sum(item => item.ToolCount)} ツール / {connections.Count(item => item.SupportsResources)} Resource対応";
     }
 }

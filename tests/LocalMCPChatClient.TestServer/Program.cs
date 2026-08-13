@@ -6,6 +6,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Server;
+using ModelContextProtocol.Protocol;
 
 if (args.Contains("--http", StringComparer.Ordinal))
 {
@@ -17,7 +18,8 @@ if (args.Contains("--http", StringComparer.Ordinal))
     var stateful = args.Contains("--stateful", StringComparer.Ordinal);
     builder.Services.AddMcpServer()
         .WithHttpTransport(options => options.Stateless = !stateful)
-        .WithToolsFromAssembly();
+        .WithToolsFromAssembly()
+        .WithResourcesFromAssembly();
     var app = builder.Build();
     if (args.Contains("--require-stateless-discover", StringComparer.Ordinal))
     {
@@ -80,8 +82,43 @@ else
     var builder = Host.CreateApplicationBuilder(args);
     builder.Logging.ClearProviders();
     builder.Logging.AddConsole(options => options.LogToStandardErrorThreshold = LogLevel.Trace);
-    builder.Services.AddMcpServer().WithStdioServerTransport().WithToolsFromAssembly();
+    builder.Services.AddMcpServer().WithStdioServerTransport().WithToolsFromAssembly().WithResourcesFromAssembly();
     await builder.Build().RunAsync();
+}
+
+[McpServerResourceType]
+public static class TestResources
+{
+    [McpServerResource(UriTemplate = "test://documents/welcome", Name = "welcome", Title = "ようこそ", MimeType = "text/plain"),
+     Description("静的なテキストResourceです。")]
+    public static string Welcome() => "MCP Resourceからこんにちは。";
+
+    [McpServerResource(UriTemplate = "test://documents/multipart", Name = "multipart", Title = "複数パート", MimeType = "text/plain")]
+    public static IEnumerable<ResourceContents> Multipart() =>
+    [
+        new TextResourceContents { Uri = "test://documents/multipart", MimeType = "text/plain", Text = "part-one" },
+        new TextResourceContents { Uri = "test://documents/multipart", MimeType = "text/plain", Text = "part-two" }
+    ];
+
+    [McpServerResource(UriTemplate = "test://documents/mixed", Name = "mixed", Title = "テキストとバイナリ", MimeType = "application/octet-stream")]
+    public static IEnumerable<ResourceContents> Mixed() =>
+    [
+        new TextResourceContents { Uri = "test://documents/mixed", MimeType = "text/plain", Text = "visible-text" },
+        BlobResourceContents.FromBytes(new byte[] { 1, 2, 3 }, "test://documents/mixed", "application/octet-stream")
+    ];
+
+    [McpServerResource(UriTemplate = "test://documents/blob", Name = "blob", Title = "バイナリのみ", MimeType = "application/octet-stream")]
+    public static BlobResourceContents Blob() => BlobResourceContents.FromBytes(new byte[] { 4, 5, 6 }, "test://documents/blob", "application/octet-stream");
+
+    [McpServerResource(UriTemplate = "test://documents/large", Name = "large", Title = "大きなテキスト", MimeType = "text/plain")]
+    public static string Large() => new('あ', 100_000);
+
+    [McpServerResource(UriTemplate = "test://documents/slow", Name = "slow", Title = "遅いResource", MimeType = "text/plain")]
+    public static async Task<string> Slow(CancellationToken cancellationToken)
+    {
+        await Task.Delay(TimeSpan.FromSeconds(30), cancellationToken);
+        return "slow";
+    }
 }
 
 [McpServerToolType]

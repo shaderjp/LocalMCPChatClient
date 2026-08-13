@@ -36,7 +36,7 @@ public interface IConversationStore
     Task<Conversation> CreateAsync(string title, string? modelId = null, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<ChatMessage>> GetMessagesAsync(Guid conversationId, CancellationToken cancellationToken = default);
     Task AppendMessageAsync(ChatMessage message, CancellationToken cancellationToken = default);
-    Task<string?> DeleteLastTurnAsync(Guid conversationId, CancellationToken cancellationToken = default);
+    Task<UserTurnInput?> DeleteLastTurnAsync(Guid conversationId, CancellationToken cancellationToken = default);
     Task RenameAsync(Guid conversationId, string title, CancellationToken cancellationToken = default);
     Task DeleteAsync(Guid conversationId, CancellationToken cancellationToken = default);
     Task DeleteAllAsync(CancellationToken cancellationToken = default);
@@ -74,6 +74,8 @@ public interface IMcpConnectionManager : IAsyncDisposable
     Task DisconnectAsync(string serverId, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<McpConnectionInfo>> GetConnectionsAsync(CancellationToken cancellationToken = default);
     Task<IReadOnlyList<ToolDefinition>> GetToolsAsync(CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<McpResourceCatalog>> GetResourceCatalogsAsync(CancellationToken cancellationToken = default);
+    Task<McpResourceSnapshot> ReadResourceAsync(McpResourceReference reference, CancellationToken cancellationToken = default);
     Task<McpToolResult> CallToolAsync(ToolCallRequest request, CancellationToken cancellationToken = default);
 }
 
@@ -111,5 +113,5 @@ public interface IInferenceBenchmarkService
 
 public interface IAgentChatService
 {
-    IAsyncEnumerable<AgentEvent> RunTurnAsync(Guid conversationId, string text, InferenceProfile profile, ModelProfile model, CancellationToken cancellationToken = default);
+    IAsyncEnumerable<AgentEvent> RunTurnAsync(Guid conversationId, UserTurnInput input, InferenceProfile profile, ModelProfile model, CancellationToken cancellationToken = default);
 }

@@ -80,6 +80,30 @@
                                 </Border.Style>
                                 <StackPanel>
                                     <TextBlock Text="{Binding RoleLabel}" Foreground="{StaticResource AccentBrush}" FontWeight="Bold" FontSize="12" Margin="0,0,0,6" />
+                                    <Expander Header="{Binding ResourceSummary}" IsExpanded="False" Margin="0,0,0,8">
+                                        <Expander.Style>
+                                            <Style TargetType="Expander">
+                                                <Setter Property="Visibility" Value="Collapsed"/>
+                                                <Style.Triggers><DataTrigger Binding="{Binding HasResources}" Value="True"><Setter Property="Visibility" Value="Visible"/></DataTrigger></Style.Triggers>
+                                            </Style>
+                                        </Expander.Style>
+                                        <ItemsControl ItemsSource="{Binding Resources}">
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <Border BorderBrush="#475569" BorderThickness="1" CornerRadius="6" Padding="10" Margin="0,4">
+                                                        <StackPanel>
+                                                            <TextBlock Text="{Binding Name}" FontWeight="Bold"/>
+                                                            <TextBlock Text="{Binding ServerDisplayName}" Foreground="{StaticResource MutedTextBrush}"/>
+                                                            <TextBlock Text="{Binding Uri}" Foreground="#93C5FD" TextWrapping="Wrap"/>
+                                                            <TextBlock Text="{Binding Status}" Foreground="#FBBF24" FontSize="11"/>
+                                                            <TextBox Text="{Binding Content}" IsReadOnly="True" AcceptsReturn="True" TextWrapping="Wrap"
+                                                                     MaxHeight="240" VerticalScrollBarVisibility="Auto" Margin="0,7,0,0"/>
+                                                        </StackPanel>
+                                                    </Border>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </Expander>
                                     <TextBlock Text="{Binding Content}" TextWrapping="Wrap" Foreground="{StaticResource TextBrush}">
                                         <TextBlock.Style>
                                             <Style TargetType="TextBlock">
@@ -110,14 +134,31 @@
             </ScrollViewer>
 
             <Border Grid.Row="2" Background="#0F172A" BorderBrush="#334155" BorderThickness="0,1,0,0" Padding="18,13">
-                <Grid>
-                    <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-                    <TextBox Text="{Binding InputText, UpdateSourceTrigger=PropertyChanged}" AcceptsReturn="True" MinHeight="64" MaxHeight="180"
-                             VerticalScrollBarVisibility="Auto" TextWrapping="Wrap" ToolTip="Ctrl+Enterで送信" />
-                    <Button Grid.Column="1" Content="停止" Command="{Binding StopCommand}" IsEnabled="{Binding IsBusy}" Margin="10,0,2,0" />
-                    <Button Grid.Column="2" Content="再生成" Command="{Binding RegenerateCommand}" />
-                    <Button Grid.Column="3" Content="送信" Command="{Binding SendCommand}" Background="#0369A1" MinWidth="80" />
-                </Grid>
+                <StackPanel>
+                    <ItemsControl ItemsSource="{Binding PendingResources}" Margin="0,0,0,6">
+                        <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Border Background="#1E3A5F" BorderBrush="#38BDF8" BorderThickness="1" CornerRadius="12" Padding="8,4" Margin="0,0,6,4" ToolTip="{Binding ToolTip}">
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="{Binding Name}" VerticalAlignment="Center"/>
+                                        <Button Content="×" Command="{Binding DataContext.RemovePendingResourceCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                CommandParameter="{Binding}" Padding="5,0" Margin="5,0,0,0" Background="Transparent" BorderThickness="0"/>
+                                    </StackPanel>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                    <Grid>
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                        <Button Grid.Column="0" Content="Resourceを追加" Click="AddResource_Click" Margin="0,0,10,0"/>
+                        <TextBox Grid.Column="1" Text="{Binding InputText, UpdateSourceTrigger=PropertyChanged}" AcceptsReturn="True" MinHeight="64" MaxHeight="180"
+                                 VerticalScrollBarVisibility="Auto" TextWrapping="Wrap" ToolTip="Ctrl+Enterで送信" />
+                        <Button Grid.Column="2" Content="停止" Command="{Binding StopCommand}" IsEnabled="{Binding IsBusy}" Margin="10,0,2,0" />
+                        <Button Grid.Column="3" Content="再生成" Command="{Binding RegenerateCommand}" />
+                        <Button Grid.Column="4" Content="送信" Command="{Binding SendCommand}" Background="#0369A1" MinWidth="80" />
+                    </Grid>
+                </StackPanel>
             </Border>
             <Border Grid.Row="3" Background="#020617" Padding="14,6">
                 <TextBlock Text="{Binding StatusText}" Foreground="{StaticResource MutedTextBrush}" FontSize="12" TextTrimming="CharacterEllipsis" />
