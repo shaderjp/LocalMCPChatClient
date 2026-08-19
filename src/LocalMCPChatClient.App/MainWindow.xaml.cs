@@ -1,5 +1,6 @@
 using System.Collections.Specialized;
 using System.ComponentModel;
+using System.Diagnostics;
 using System.IO;
 using System.Windows;
 using LocalMCPChatClient.App.ViewModels;
@@ -73,7 +74,31 @@ public partial class MainWindow : Window
     private void AddResource_Click(object sender, RoutedEventArgs e)
     {
         var window = new ResourcePickerWindow(_services.GetRequiredService<ResourcePickerViewModel>()) { Owner = this };
-        if (window.ShowDialog() == true) _viewModel.AddPendingResources(window.SelectedResources);
+        if (window.ShowDialog() != true) return;
+        _viewModel.AddPendingResources(window.SelectedResources.Concat(window.TemplateResource is null ? [] : [window.TemplateResource]));
+        if (!string.IsNullOrWhiteSpace(window.PromptText))
+            _viewModel.InputText = string.IsNullOrWhiteSpace(_viewModel.InputText)
+                ? window.PromptText
+                : _viewModel.InputText + Environment.NewLine + Environment.NewLine + window.PromptText;
+    }
+
+    private void OpenArtifact_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement { Tag: ArtifactAttachmentViewModel artifact } || !File.Exists(artifact.LocalPath)) return;
+        Process.Start(new ProcessStartInfo(artifact.LocalPath) { UseShellExecute = true });
+    }
+
+    private void SaveArtifact_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement { Tag: ArtifactAttachmentViewModel artifact } || !File.Exists(artifact.LocalPath)) return;
+        var dialog = new SaveFileDialog
+        {
+            Title = "Artifactを保存",
+            FileName = artifact.Name,
+            Filter = "すべてのファイル (*.*)|*.*",
+            OverwritePrompt = true
+        };
+        if (dialog.ShowDialog(this) == true) File.Copy(artifact.LocalPath, dialog.FileName, true);
     }
 
     private static string CreateExportFileName(string title)

@@ -29,6 +29,7 @@ public partial class App : Application
                 services.AddSingleton<ISettingsStore, JsonSettingsStore>();
                 services.AddSingleton<ISecretStore, WindowsCredentialStore>();
                 services.AddSingleton<IConversationStore, SqliteConversationStore>();
+                services.AddSingleton<IArtifactStore, ArtifactStore>();
                 services.AddSingleton<IConversationExporter, MarkdownConversationExporter>();
                 services.AddSingleton<IArtifactInstaller, ArtifactInstaller>();
                 services.AddSingleton<IInferenceRuntimeManager, LlamaRuntimeManager>();

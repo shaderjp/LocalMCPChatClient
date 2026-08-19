@@ -19,7 +19,8 @@ if (args.Contains("--http", StringComparer.Ordinal))
     builder.Services.AddMcpServer()
         .WithHttpTransport(options => options.Stateless = !stateful)
         .WithToolsFromAssembly()
-        .WithResourcesFromAssembly();
+        .WithResourcesFromAssembly()
+        .WithPromptsFromAssembly();
     var app = builder.Build();
     if (args.Contains("--require-stateless-discover", StringComparer.Ordinal))
     {
@@ -82,7 +83,7 @@ else
     var builder = Host.CreateApplicationBuilder(args);
     builder.Logging.ClearProviders();
     builder.Logging.AddConsole(options => options.LogToStandardErrorThreshold = LogLevel.Trace);
-    builder.Services.AddMcpServer().WithStdioServerTransport().WithToolsFromAssembly().WithResourcesFromAssembly();
+    builder.Services.AddMcpServer().WithStdioServerTransport().WithToolsFromAssembly().WithResourcesFromAssembly().WithPromptsFromAssembly();
     await builder.Build().RunAsync();
 }
 
@@ -110,6 +111,14 @@ public static class TestResources
     [McpServerResource(UriTemplate = "test://documents/blob", Name = "blob", Title = "バイナリのみ", MimeType = "application/octet-stream")]
     public static BlobResourceContents Blob() => BlobResourceContents.FromBytes(new byte[] { 4, 5, 6 }, "test://documents/blob", "application/octet-stream");
 
+    [McpServerResource(UriTemplate = "test://documents/pixel.png", Name = "pixel", Title = "1x1 PNG", MimeType = "image/png")]
+    public static BlobResourceContents Pixel() => BlobResourceContents.FromBytes(
+        Convert.FromBase64String("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="),
+        "test://documents/pixel.png", "image/png");
+
+    [McpServerResource(UriTemplate = "test://templates/{name}", Name = "document_by_name", Title = "Document By Name", MimeType = "text/plain")]
+    public static string ByName(string name) => "template:" + name;
+
     [McpServerResource(UriTemplate = "test://documents/large", Name = "large", Title = "大きなテキスト", MimeType = "text/plain")]
     public static string Large() => new('あ', 100_000);
 
@@ -133,4 +142,20 @@ public static class TestTools
         await Task.Delay(milliseconds, cancellationToken);
         return "waited";
     }
+
+    [McpServerTool(Name = "image"), Description("テキストとPNG画像を返します。")]
+    public static IEnumerable<ContentBlock> Image() =>
+    [
+        new TextContentBlock { Text = "inline-image" },
+        ImageContentBlock.FromBytes(
+            Convert.FromBase64String("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="),
+            "image/png")
+    ];
+}
+
+[McpServerPromptType]
+public static class TestPrompts
+{
+    [McpServerPrompt(Name = "review"), Description("レビューPromptを展開します。")]
+    public static string Review([Description("対象名")] string subject) => "Review this: " + subject;
 }

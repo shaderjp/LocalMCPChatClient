@@ -142,7 +142,9 @@ public sealed class JsonSettingsStore(IAppPaths paths) : ISettingsStore
                 FileName = string.IsNullOrWhiteSpace(current.FileName) ? builtIn.FileName : current.FileName,
                 Sha256 = builtIn.Sha256,
                 Size = builtIn.Size,
-                LicenseUrl = string.IsNullOrWhiteSpace(current.LicenseUrl) ? builtIn.LicenseUrl : current.LicenseUrl
+                LicenseUrl = string.IsNullOrWhiteSpace(current.LicenseUrl) ? builtIn.LicenseUrl : current.LicenseUrl,
+                Modalities = builtIn.Modalities,
+                VisionProjector = builtIn.VisionProjector
             };
         }
         return settings with
@@ -152,6 +154,7 @@ public sealed class JsonSettingsStore(IAppPaths paths) : ISettingsStore
             ContextSize = Math.Clamp(settings.ContextSize, 512, 131_072),
             MaxOutputTokens = Math.Clamp(settings.MaxOutputTokens, 64, 32_768),
             Temperature = Math.Clamp(settings.Temperature, 0, 2),
+            ImageTokenBudget = NormalizeImageTokenBudget(settings.ImageTokenBudget),
             InferenceBenchmarks = settings.InferenceBenchmarks ?? [],
             Models = models.Values.ToList(),
             McpServers = settings.McpServers ?? [],
@@ -172,6 +175,17 @@ public sealed class JsonSettingsStore(IAppPaths paths) : ISettingsStore
                 FileName = "gemma-4-E2B_q4_0-it.gguf",
                 Sha256 = "fa401b55b07ee70a54c6dae3903c783a6e65064312529ea57175cb5f8dec6634",
                 Size = 3_349_516_256,
+                Modalities = [InputModality.Text, InputModality.Image],
+                VisionProjector = new ArtifactDescriptor
+                {
+                    Id = "gemma-4-e2b-it-mmproj",
+                    Kind = ArtifactKind.Model,
+                    DisplayName = "Gemma 4 E2B vision projector",
+                    DownloadUri = new Uri("https://huggingface.co/google/gemma-4-E2B-it-qat-q4_0-gguf/resolve/675cff42a74c774d6cb76f76d8eacb49b48c9b93/gemma-4-E2B-it-mmproj.gguf"),
+                    FileName = "gemma-4-E2B-it-mmproj.gguf",
+                    Sha256 = "021059cce659fe7f9170d5599761d7bbaf644b798dab9503aca30dc43e6beb14",
+                    Size = 986_833_664
+                },
                 LicenseUrl = "https://huggingface.co/google/gemma-4-E2B-it-qat-q4_0-gguf"
             },
             new ModelProfile
@@ -183,9 +197,23 @@ public sealed class JsonSettingsStore(IAppPaths paths) : ISettingsStore
                 FileName = "gemma-4-E4B_q4_0-it.gguf",
                 Sha256 = "676c35070db6dbe52f93e9c864ee0fba4eddea94b9c875d9cb10daff453fbaee",
                 Size = 5_154_941_280,
+                Modalities = [InputModality.Text, InputModality.Image],
+                VisionProjector = new ArtifactDescriptor
+                {
+                    Id = "gemma-4-e4b-it-mmproj",
+                    Kind = ArtifactKind.Model,
+                    DisplayName = "Gemma 4 E4B vision projector",
+                    DownloadUri = new Uri("https://huggingface.co/google/gemma-4-E4B-it-qat-q4_0-gguf/resolve/4b4a2c1d584be7264f87aac328a1bc739ce81b6c/gemma-4-E4B-it-mmproj.gguf"),
+                    FileName = "gemma-4-E4B-it-mmproj.gguf",
+                    Sha256 = "7498a37cb619e55f2fcf87eb931f56e99389ed6d432e4c5c66110694c0d65578",
+                    Size = 991_552_256
+                },
                 LicenseUrl = "https://huggingface.co/google/gemma-4-E4B-it-qat-q4_0-gguf"
             }
         ],
         SelectedModelId = "gemma-4-e2b-it-q4"
     };
+
+    private static int NormalizeImageTokenBudget(int value)
+        => new[] { 70, 140, 280, 560, 1120 }.OrderBy(candidate => Math.Abs(candidate - value)).First();
 }

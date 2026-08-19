@@ -41,6 +41,7 @@
                         <TextBlock Text="カスタム llama-server" Margin="0,10,0,3" Foreground="{StaticResource MutedTextBrush}" />
                         <TextBox Text="{Binding CustomRuntimePath}" IsReadOnly="True" />
                         <CheckBox Content="起動時にモデルを準備する（初回応答を高速化）" IsChecked="{Binding PreloadModel}" Margin="2,12,0,0" />
+                        <CheckBox Content="画像入力を有効にする" IsChecked="{Binding EnableVision}" Margin="2,6,0,0" />
                         <TextBlock Text="{Binding PerformanceRecommendation}" TextWrapping="Wrap" Foreground="{StaticResource AccentBrush}" Margin="0,10,0,0" />
                         <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
                             <Button Content="速度診断を実行" Command="{Binding RunBenchmarkCommand}" />
@@ -53,10 +54,11 @@
                         <TextBlock Text="生成設定" FontSize="18" FontWeight="Bold" Foreground="{StaticResource AccentBrush}" />
                         <Grid Margin="0,8">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="170"/><ColumnDefinition Width="180"/></Grid.ColumnDefinitions>
-                            <Grid.RowDefinitions><RowDefinition/><RowDefinition/><RowDefinition/></Grid.RowDefinitions>
+                            <Grid.RowDefinitions><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/></Grid.RowDefinitions>
                             <TextBlock Text="コンテキスト長" VerticalAlignment="Center"/><TextBox Grid.Column="1" Text="{Binding ContextSize}" Margin="3" />
                             <TextBlock Grid.Row="1" Text="最大出力トークン" VerticalAlignment="Center"/><TextBox Grid.Row="1" Grid.Column="1" Text="{Binding MaxOutputTokens}" Margin="3" />
                             <TextBlock Grid.Row="2" Text="Temperature (0～2)" VerticalAlignment="Center"/><TextBox Grid.Row="2" Grid.Column="1" Text="{Binding Temperature}" Margin="3" />
+                            <TextBlock Grid.Row="3" Text="画像トークン予算" VerticalAlignment="Center"/><ComboBox Grid.Row="3" Grid.Column="1" ItemsSource="{Binding ImageTokenBudgets}" SelectedItem="{Binding ImageTokenBudget}" Margin="3" />
                         </Grid>
                         <Button Content="推論設定を保存" Command="{Binding SaveGeneralCommand}" HorizontalAlignment="Left" Background="#0369A1" />
                     </StackPanel>
@@ -65,8 +67,19 @@
 
             <TabItem Header="MCP接続">
                 <Grid Margin="14">
+                    <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
                     <Grid.ColumnDefinitions><ColumnDefinition Width="250"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                    <DockPanel Grid.Column="0" Margin="0,0,12,0">
+                    <Border Grid.ColumnSpan="2" BorderBrush="#334155" BorderThickness="1" CornerRadius="6" Padding="10" Margin="0,0,0,10">
+                        <Grid>
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="220"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="110"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                            <TextBlock Text="LookDev endpoint" VerticalAlignment="Center"/>
+                            <TextBox Grid.Column="1" Text="{Binding LookDevPairingAddress}" Margin="6,0"/>
+                            <TextBlock Grid.Column="2" Text="8桁コード" VerticalAlignment="Center"/>
+                            <TextBox Grid.Column="3" Text="{Binding LookDevPairingCode}" MaxLength="8" Margin="6,0"/>
+                            <Button Grid.Column="4" Content="LocalMCPChatClientとペアリング" Command="{Binding PairLookDevCommand}" Background="#0369A1"/>
+                        </Grid>
+                    </Border>
+                    <DockPanel Grid.Row="1" Grid.Column="0" Margin="0,0,12,0">
                         <StackPanel DockPanel.Dock="Top">
                             <StackPanel Orientation="Horizontal">
                                 <Button Content="＋ stdio" Command="{Binding AddStdioCommand}" />
@@ -80,7 +93,7 @@
                             <ListBox.ItemTemplate><DataTemplate><StackPanel Margin="4"><TextBlock Text="{Binding Name}" FontWeight="Bold"/><TextBlock Text="{Binding TransportLabel}" Foreground="{StaticResource MutedTextBrush}" FontSize="11"/></StackPanel></DataTemplate></ListBox.ItemTemplate>
                         </ListBox>
                     </DockPanel>
-                    <ScrollViewer Grid.Column="1" VerticalScrollBarVisibility="Auto">
+                    <ScrollViewer Grid.Row="1" Grid.Column="1" VerticalScrollBarVisibility="Auto">
                         <StackPanel DataContext="{Binding SelectedMcpServer}" Margin="8">
                             <TextBlock Text="接続プロファイル" FontSize="18" FontWeight="Bold" Foreground="{StaticResource AccentBrush}" />
                             <CheckBox Content="有効" IsChecked="{Binding Enabled}" Margin="0,10,0,5" />
@@ -102,7 +115,7 @@
                             <TextBlock Text="ツール実行タイムアウト（秒）"/><TextBox Text="{Binding TimeoutSeconds}" Width="100" HorizontalAlignment="Left" />
                         </StackPanel>
                     </ScrollViewer>
-                    <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Bottom" HorizontalAlignment="Right" Margin="8">
+                    <StackPanel Grid.Row="1" Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Bottom" HorizontalAlignment="Right" Margin="8">
                         <Button Content="保存" Command="{Binding DataContext.SaveMcpCommand, RelativeSource={RelativeSource AncestorType=Window}}" />
                         <Button Content="接続テスト" Command="{Binding DataContext.TestMcpCommand, RelativeSource={RelativeSource AncestorType=Window}}" />
                         <Button Content="接続" Command="{Binding DataContext.ConnectMcpCommand, RelativeSource={RelativeSource AncestorType=Window}}" Background="#0369A1" />
@@ -120,6 +133,12 @@
                         <TextBlock Text="ローカルデータ" FontSize="18" FontWeight="Bold" Foreground="{StaticResource AccentBrush}" />
                         <TextBlock Text="保存先" Foreground="{StaticResource MutedTextBrush}" Margin="0,8,0,2"/><TextBox Text="{Binding DataDirectory, Mode=OneWay}" IsReadOnly="True" />
                         <TextBlock Text="ログ" Foreground="{StaticResource MutedTextBrush}" Margin="0,8,0,2"/><TextBox Text="{Binding LogsDirectory, Mode=OneWay}" IsReadOnly="True" />
+                        <TextBlock Text="MCP artifacts" FontWeight="SemiBold" Margin="0,12,0,2" />
+                        <TextBlock Text="{Binding ArtifactStorageText}" Foreground="{StaticResource MutedTextBrush}" />
+                        <TextBox Text="{Binding ArtifactDirectory, Mode=OneWay}" IsReadOnly="True" Margin="0,3,0,4" />
+                        <TextBlock Text="会話を削除すると、その会話だけが参照していたartifactを回収します。容量超過時も履歴は自動削除しません。"
+                                   TextWrapping="Wrap" Foreground="{StaticResource MutedTextBrush}" />
+                        <Button Content="Artifactフォルダーを開く" Click="OpenArtifactFolder_Click" HorizontalAlignment="Left" Margin="0,6,0,0" />
                         <Button Content="チャット履歴をすべて削除" Click="ClearHistory_Click" HorizontalAlignment="Left" Margin="0,14,0,0" />
                         <Separator Margin="0,20" />
                         <TextBlock Text="設定のリセット" FontSize="18" FontWeight="Bold" Foreground="{StaticResource AccentBrush}" />

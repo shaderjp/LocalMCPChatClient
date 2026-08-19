@@ -1,25 +1,27 @@
-# D3D12LookDevPTとの連携例
+# D3D12LookDevPTWinUIとの画像レビュー連携
 
-このページでは、LocalMCPChatClientのローカルGemmaから、別アプリの[D3D12LookDevPT](https://github.com/shaderjp/D3D12LookDevPT)へMCP接続し、レンダラーの状態確認や設定変更を日本語チャットで行う例を説明します。
+このページでは、LocalMCPChatClientのローカルGemma 4からWinUI版D3D12 LookDev環境へMCP契約v1で接続し、capture、AOV、監査、差分heatmapを画像付きで非破壊レビューする流れを説明します。
 
-4枚目のスクリーンショットは接続先のMCPサーバーアプリです。D3D12LookDevPTはこのリポジトリやLocalMCPChatClientのReleaseには含まれません。
+4枚目のスクリーンショットは接続先のMCPサーバーアプリです。単体の
+LocalMCPChatClient Releaseには含まれませんが、D3D12 LookDev Portableスイートには
+両アプリがversion固定manifest付きで含まれます。
 
 ```mermaid
 flowchart LR
     User["利用者"] --> Chat["LocalMCPChatClient\nWPFチャット"]
     Chat --> Gemma["ローカルGemma 4"]
     Gemma --> Client["MCPクライアント\nTool Call検証・承認"]
-    Client -->|"Streamable HTTP\n127.0.0.1:8777/mcp"| Server["D3D12LookDevPT\nMCP Server"]
+    Client -->|"contract v1 / Streamable HTTP\n127.0.0.1:8777/mcp"| Server["D3D12LookDevPTWinUI\nMCP Server"]
     Server --> Renderer["Direct3D 12 / DXRレンダラー"]
 ```
 
 ## 1. 事前準備
 
 - LocalMCPChatClientでGemma 4 E2BまたはE4Bと推論ランタイムを準備しておく
-- D3D12LookDevPTを同リポジトリの[日本語README](https://github.com/shaderjp/D3D12LookDevPT/blob/main/README.ja.md)に従ってビルド・起動する
+- D3D12LookDevPTWinUIを同リポジトリの[日本語README](https://github.com/shaderjp/D3D12LookDevPTWinUI/blob/main/README.ja.md)に従ってビルド・起動する
 - D3D12LookDevPT側で、確認に使うシーンまたはプロジェクトを開く
 
-D3D12LookDevPTはWindows 11 x64、DXR Tier対応GPU、Visual StudioのC++開発環境を対象としています。詳細な対応環境とアセットの準備方法は接続先リポジトリの文書を正としてください。
+D3D12LookDevPTWinUIはWindows 11 x64とDXR Tier対応GPUを対象とします。開発buildにはVisual StudioのC++環境が必要ですが、Portableスイートのtarget PCではVisual Studio、.NET、Windows App Runtime、管理者権限を要求しません。詳細な対応環境とアセットの準備方法は接続先リポジトリの文書を正としてください。
 
 ## 2. D3D12LookDevPTのMCPサーバーを起動する
 
@@ -44,9 +46,13 @@ Access Modeの違いは次の通りです。
 
 サーバーは`127.0.0.1`だけで待ち受けます。Bearerトークンは秘密情報です。画像、Markdown保存した会話、Issue、README、Git管理ファイルへ含めないでください。
 
-## 3. LocalMCPChatClientへ接続を登録する
+## 3. 8桁コードでペアリングする
 
-D3D12LookDevPTリポジトリの[`config/LocalMCPChatClient.mcp.json`](https://github.com/shaderjp/D3D12LookDevPT/blob/main/config/LocalMCPChatClient.mcp.json)を「設定」→「MCP接続」→「JSONからインポート」で読み込むのが最短です。手動で追加する場合は「＋ HTTP」を選び、次を入力します。
+D3D12側のMCP Serverパネルで「Pair LocalMCPChatClient」を押し、90秒間有効な8桁コードを表示します。LocalMCPChatClientの「設定」→「MCP接続」でendpointとコードを入力し、「LocalMCPChatClientとペアリング」を押します。コードは1回限りで、5回失敗すると無効になります。発行tokenはWindows Credential Managerへ保存され、設定JSONへ平文では残りません。
+
+従来の手動接続も互換経路として利用できます。
+
+D3D12LookDevPTWinUIリポジトリの[`config/LocalMCPChatClient.mcp.json`](https://github.com/shaderjp/D3D12LookDevPTWinUI/blob/main/config/LocalMCPChatClient.mcp.json)も互換経路として「設定」→「MCP接続」→「JSONからインポート」で読み込めます。手動で追加する場合は「＋ HTTP」を選び、次を入力します。
 
 | UI項目 | 値 |
 |---|---|
@@ -60,7 +66,7 @@ D3D12LookDevPTリポジトリの[`config/LocalMCPChatClient.mcp.json`](https://g
 | 接続開始タイムアウト | `10` |
 | ツール実行タイムアウト | `120` |
 
-`MCP-Protocol-Version`は追加ヘッダーへ設定しません。LocalMCPChatClientが使用するMCP C# SDK 2.1.0とD3D12LookDevPTは`2026-07-28`のstateless方式を自動交渉します。サーバーは旧クライアント向けに`2025-11-25` / `2025-06-18`も保持していますが、通常は固定する必要がありません。
+`MCP-Protocol-Version`は追加ヘッダーへ設定しません。接続時の`experimental.lookdevpt.contractVersion`が`1.0`のときだけ専用レビューUIが有効になります。サーバーは旧クライアント向けのプロトコル互換性も保持しています。
 
 Windowsのユーザー環境変数`D3D12LOOKDEVPT_MCP_TOKEN`へ、D3D12LookDevPTでコピーしたトークンだけを設定します。環境変数を追加・変更した後は、LocalMCPChatClientを完全に終了してから起動し直してください。
 
@@ -118,9 +124,49 @@ ACESとはどんなトーンマッパーですか？
 
 ## 対応範囲
 
-D3D12LookDevPTのMCPサーバーはToolsに加えてResources、Prompts、resource subscriptionも公開しますが、LocalMCPChatClient `0.1.2`はTools中心の初期版です。本アプリから利用できるのは接続時にToolsとして列挙された機能です。
+D3D12LookDevPTWinUIのMCPサーバーはTools、画像Resources、Resource Templates、Prompts、resource subscriptionを公開します。LocalMCPChatClientはcontent-partをSHA-256単位で保存し、カード上でサムネイル、拡大、保存、URI、生成元を表示します。
 
-サーバーの完全なTool一覧、スキーマ、Resources、Promptsは[D3D12LookDevPTのMCPサーバー文書](https://github.com/shaderjp/D3D12LookDevPT/blob/main/docs/mcp.ja.md)を参照してください。
+メイン画面のpreset（`quick` / `material` / `lighting` / `temporal`）を選び「現在のシーンをレビュー」を押すと、`audit_scene`、`capture_viewport`、`start_review`、`get_review`を非破壊で実行します。購読対応時はレビューResourceを購読し、未対応時はレビュー中だけ1秒間隔でpollします。主要画像は最大4枚までGemmaへ渡されます。画像入力が無効な場合、回答にはモデルが画像を見ていないことが明示されます。
+
+### 安全な変更セッション
+
+入力欄へaction配列を入れて「安全な変更」を押します。例えば:
+
+```json
+{
+  "actions": [
+    { "method": "set_color_management", "params": { "exposure": 1.0 } }
+  ]
+}
+```
+
+baseline capture、scene fingerprint付きcheckpoint、全actionの`validateOnly`検証、
+一括承認、適用、after capture、`compare_captures`、採用または復元の順に進みます。
+例外や停止が適用後に発生した場合も復元を試み、最後にcheckpointを削除します。
+
+### 非同期Benchmark
+
+入力欄へ次のようなJSONを入れて「Benchmark」を押します。
+
+```json
+{
+  "cameraPath": "D:\\Scenes\\shot.camera.json",
+  "kind": "combined",
+  "frames": 300,
+  "warmup": 120,
+  "seed": 1,
+  "captureEvery": 60,
+  "captureAovs": true,
+  "compareWithBenchmarkId": "optional-previous-id"
+}
+```
+
+進捗Resourceを購読し、未対応時は1秒pollします。完了後はCSV、quality metric、
+capture/AOVを取得してGemmaへ渡します。`compareWithBenchmarkId`を指定すると2 runの
+GPU timing、quality metric、設定差分を同じ回答で比較します。停止時は
+`cancel_benchmark`を送り、D3D12側が対話状態を復元します。
+
+サーバーの完全なTool一覧、スキーマ、Resources、Promptsは[D3D12LookDevPTWinUIのMCPサーバー文書](https://github.com/shaderjp/D3D12LookDevPTWinUI/blob/main/docs/mcp.ja.md)を参照してください。
 
 ## 接続できない場合
 

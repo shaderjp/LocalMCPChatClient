@@ -127,7 +127,7 @@ MCPツール名は`<serverId>__<toolName>`に正規化します。OpenAI互換AP
 
 ## MCP Resource添付
 
-`McpConnectionManager`は接続時にサーバーのResources capabilityを記録します。選択画面を開いたときだけ、対応サーバーごとに静的Resource一覧を取得し、Resource Templatesや変更通知は要求しません。一覧エラーは`McpResourceCatalog`へサーバー単位で格納し、ほかの接続の結果と分離します。
+`McpConnectionManager`は接続時にResources、Resource Templates、Prompts、subscriptions、および`experimental.lookdevpt.contractVersion`を記録します。Text、structured JSON、Image、Blob、Resource Link、Embedded Resourceを共通content-partへ変換し、バイナリはartifactストアへ保存します。一覧エラーは`McpResourceCatalog`へサーバー単位で格納し、ほかの接続の結果と分離します。
 
 送信時は`UserTurnInput.ResourceReferences`をすべて読み取ってからユーザーメッセージを保存します。`TextResourceContents`は結合し、Blob部分は省略数だけを記録します。テキストがない場合や読取に失敗した場合は保存前に送信を中止します。
 

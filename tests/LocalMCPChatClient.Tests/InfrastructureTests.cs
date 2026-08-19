@@ -237,6 +237,27 @@ public sealed class ConversationStoreTests : IDisposable
         Assert.Equal([ChatRole.User, ChatRole.Assistant], remaining.Select(item => item.Role));
     }
 
+    [Fact]
+    public async Task Deleting_a_conversation_collects_only_unreferenced_artifacts()
+    {
+        _paths.EnsureCreated();
+        var artifacts = new ArtifactStore(_paths);
+        var first = await artifacts.StoreAsync(new byte[] { 1, 2, 3 }, "application/octet-stream", "first.bin");
+        var second = await artifacts.StoreAsync(new byte[] { 4, 5, 6 }, "application/octet-stream", "second.bin");
+        var store = new SqliteConversationStore(_paths, artifacts);
+        var keep = await store.CreateAsync("keep");
+        var remove = await store.CreateAsync("remove");
+        await store.AppendMessageAsync(new ChatMessage(Guid.NewGuid(), keep.Id, ChatRole.Tool, "keep", DateTimeOffset.UtcNow,
+            ContentParts: [new McpContentPart(McpContentKind.Blob, Artifact: first)]));
+        await store.AppendMessageAsync(new ChatMessage(Guid.NewGuid(), remove.Id, ChatRole.Tool, "remove", DateTimeOffset.UtcNow,
+            ContentParts: [new McpContentPart(McpContentKind.Blob, Artifact: second)]));
+
+        await store.DeleteAsync(remove.Id);
+
+        Assert.True(File.Exists(artifacts.GetAbsolutePath(first)));
+        Assert.False(File.Exists(artifacts.GetAbsolutePath(second)));
+    }
+
     public void Dispose() => _paths.Dispose();
 }
 
@@ -514,6 +535,7 @@ internal sealed class TestPaths : IAppPaths, IDisposable
     public string RuntimesDirectory => Path.Combine(DataDirectory, "Runtimes");
     public string DownloadsDirectory => Path.Combine(DataDirectory, "Downloads");
     public string LogsDirectory => Path.Combine(DataDirectory, "Logs");
+    public string ArtifactsDirectory => Path.Combine(DataDirectory, "Artifacts");
 
     public void EnsureCreated()
     {
@@ -522,6 +544,7 @@ internal sealed class TestPaths : IAppPaths, IDisposable
         Directory.CreateDirectory(RuntimesDirectory);
         Directory.CreateDirectory(DownloadsDirectory);
         Directory.CreateDirectory(LogsDirectory);
+        Directory.CreateDirectory(ArtifactsDirectory);
     }
 
     public void Dispose()

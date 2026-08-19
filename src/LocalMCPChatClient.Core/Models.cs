@@ -12,6 +12,8 @@ public enum ApprovalDecision { Ask, Allow, Deny }
 public enum ApprovalResponse { AllowOnce, AlwaysAllow, Deny }
 public enum ArtifactKind { Runtime, Model }
 public enum AgentEventKind { UserMessageStored, TextDelta, ToolApprovalRequired, ToolStarted, ToolCompleted, Warning, Completed }
+public enum McpContentKind { Text, StructuredJson, Image, Blob, ResourceLink, EmbeddedResource }
+public enum InputModality { Text, Image }
 
 public sealed record Conversation(
     Guid Id,
@@ -30,7 +32,27 @@ public sealed record ChatMessage(
     string? ToolName = null,
     string? ToolCallsJson = null,
     bool IsError = false,
-    IReadOnlyList<McpResourceSnapshot>? ResourceSnapshots = null);
+    IReadOnlyList<McpResourceSnapshot>? ResourceSnapshots = null,
+    IReadOnlyList<McpContentPart>? ContentParts = null);
+
+public sealed record StoredArtifact(
+    string Id,
+    string Sha256,
+    string MimeType,
+    string RelativePath,
+    string DisplayName,
+    long ByteCount,
+    int? Width = null,
+    int? Height = null,
+    string? SourceUri = null);
+
+public sealed record McpContentPart(
+    McpContentKind Kind,
+    string? Text = null,
+    string? MimeType = null,
+    string? Uri = null,
+    string? Name = null,
+    StoredArtifact? Artifact = null);
 
 public sealed record McpResourceDefinition(
     string ServerId,
@@ -66,7 +88,8 @@ public sealed record McpResourceSnapshot(
     DateTimeOffset ReadAt,
     int OriginalByteCount,
     bool WasTruncated = false,
-    int SkippedBinaryParts = 0);
+    int SkippedBinaryParts = 0,
+    IReadOnlyList<McpContentPart>? Parts = null);
 
 public sealed record McpResourceCatalog(
     string ServerId,
@@ -96,7 +119,8 @@ public sealed record McpToolResult(
     string ToolName,
     string Content,
     bool IsError = false,
-    bool WasTruncated = false);
+    bool WasTruncated = false,
+    IReadOnlyList<McpContentPart>? Parts = null);
 
 public sealed record InferenceUsage(int PromptTokens, int CompletionTokens, int TotalTokens);
 
@@ -118,7 +142,8 @@ public sealed record InferenceRequest(
     IReadOnlyList<ChatMessage> Messages,
     IReadOnlyList<ToolDefinition> Tools,
     double Temperature = 0.7,
-    int MaxTokens = 2048);
+    int MaxTokens = 2048,
+    int ImageTokenBudget = 280);
 
 public sealed record RuntimeState(
     RuntimeStatus Status,
@@ -126,7 +151,8 @@ public sealed record RuntimeState(
     Uri? Endpoint = null,
     string? ModelPath = null,
     string? Error = null,
-    string? AuthenticationToken = null)
+    string? AuthenticationToken = null,
+    bool VisionEnabled = false)
 {
     public static RuntimeState Stopped { get; } = new(RuntimeStatus.Stopped);
 }
@@ -142,6 +168,9 @@ public sealed record ModelProfile
     public long? Size { get; init; }
     public string LicenseUrl { get; init; } = string.Empty;
     public string? LocalPath { get; init; }
+    public List<InputModality> Modalities { get; init; } = [InputModality.Text];
+    public ArtifactDescriptor? VisionProjector { get; init; }
+    public string? VisionProjectorPath { get; init; }
 }
 
 public sealed record InferenceProfile
@@ -152,6 +181,8 @@ public sealed record InferenceProfile
     public int MaxOutputTokens { get; init; } = 2048;
     public double Temperature { get; init; } = 0.7;
     public string? CustomRuntimePath { get; init; }
+    public bool EnableVision { get; init; } = true;
+    public int ImageTokenBudget { get; init; } = 280;
 }
 
 public sealed record SecretValue(string Name, string? Value = null, string? SecretRef = null);
@@ -193,7 +224,36 @@ public sealed record McpConnectionInfo(
     McpConnectionState State,
     string? Error = null,
     int ToolCount = 0,
-    bool SupportsResources = false);
+    bool SupportsResources = false,
+    bool SupportsPrompts = false,
+    bool SupportsResourceTemplates = false,
+    bool SupportsSubscriptions = false,
+    string? LookDevContractVersion = null);
+
+public sealed record McpPromptDefinition(
+    string ServerId,
+    string ServerDisplayName,
+    string Name,
+    string? Title,
+    string? Description,
+    IReadOnlyList<McpPromptArgument> Arguments);
+
+public sealed record McpPromptArgument(string Name, string? Description, bool Required = false);
+
+public sealed record McpPromptResult(
+    string ServerId,
+    string ServerDisplayName,
+    string Name,
+    string? Description,
+    IReadOnlyList<McpContentPart> Parts);
+
+public sealed record McpResourceTemplateDefinition(
+    string ServerId,
+    string ServerDisplayName,
+    string UriTemplate,
+    string Name,
+    string? Description,
+    string? MimeType);
 
 public sealed record ToolApprovalRule(string ServerId, string ToolName, ApprovalDecision Decision);
 
@@ -282,6 +342,8 @@ public sealed record AppSettings
     public string? ModelDirectory { get; init; }
     public string? CustomRuntimePath { get; init; }
     public bool PreloadModel { get; init; } = true;
+    public bool EnableVision { get; init; } = true;
+    public int ImageTokenBudget { get; init; } = 280;
     public List<InferenceBenchmarkResult> InferenceBenchmarks { get; init; } = [];
     public List<ModelProfile> Models { get; init; } = [];
     public List<McpServerProfile> McpServers { get; init; } = [];

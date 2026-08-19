@@ -9,7 +9,10 @@ using LocalMCPChatClient.Core;
 
 namespace LocalMCPChatClient.Infrastructure;
 
-public sealed class LlamaInferenceService(IInferenceRuntimeManager runtimeManager, IHttpClientFactory httpClientFactory) : IInferenceService
+public sealed class LlamaInferenceService(
+    IInferenceRuntimeManager runtimeManager,
+    IHttpClientFactory httpClientFactory,
+    IArtifactStore? artifactStore = null) : IInferenceService
 {
     private readonly SemaphoreSlim _startGate = new(1, 1);
     private RuntimeState _state = RuntimeState.Stopped;
@@ -76,9 +79,10 @@ public sealed class LlamaInferenceService(IInferenceRuntimeManager runtimeManage
         using var client = CreateClient();
         var requestTimer = Stopwatch.StartNew();
         double firstTokenMilliseconds = 0;
+        var body = await CreateRequestBodyAsync(request, cancellationToken).ConfigureAwait(false);
         using var message = new HttpRequestMessage(HttpMethod.Post, "v1/chat/completions")
         {
-            Content = JsonContent.Create(CreateRequestBody(request))
+            Content = JsonContent.Create(body)
         };
         using var response = await client.SendAsync(message, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false);
         if (!response.IsSuccessStatusCode)
@@ -200,16 +204,44 @@ public sealed class LlamaInferenceService(IInferenceRuntimeManager runtimeManage
         }
     }
 
-    private static JsonObject CreateRequestBody(InferenceRequest request)
+    private async Task<JsonObject> CreateRequestBodyAsync(InferenceRequest request, CancellationToken cancellationToken)
     {
         var messages = new JsonArray();
         foreach (var item in request.Messages)
         {
             var message = new JsonObject
             {
-                ["role"] = item.Role.ToString().ToLowerInvariant(),
-                ["content"] = item.Content
+                ["role"] = item.Role.ToString().ToLowerInvariant()
             };
+            var imageParts = item.ContentParts?.Where(part => part.Kind == McpContentKind.Image && part.Artifact is not null).Take(4).ToList() ?? [];
+            if (imageParts.Count > 0 && _state.VisionEnabled && artifactStore is not null)
+            {
+                var content = new JsonArray();
+                long totalImageBytes = 0;
+                foreach (var part in imageParts)
+                {
+                    var (bytes, mimeType) = await artifactStore.ReadForInferenceAsync(part.Artifact!, cancellationToken).ConfigureAwait(false);
+                    totalImageBytes += bytes.LongLength;
+                    if (totalImageBytes > 64L * 1024 * 1024) throw new InvalidDataException("1ターンの画像は合計64 MiBまでです。");
+                    content.Add(new JsonObject
+                    {
+                        ["type"] = "image_url",
+                        ["image_url"] = new JsonObject
+                        {
+                            ["url"] = $"data:{mimeType};base64,{Convert.ToBase64String(bytes)}"
+                        }
+                    });
+                }
+                content.Add(new JsonObject { ["type"] = "text", ["text"] = item.Content });
+                message["content"] = content;
+            }
+            else
+            {
+                var suffix = imageParts.Count > 0 && !_state.VisionEnabled
+                    ? "\n\n[画像入力は無効です。モデルは添付画像を見ていません。]"
+                    : string.Empty;
+                message["content"] = item.Content + suffix;
+            }
             if (item.Role == ChatRole.Assistant && !string.IsNullOrWhiteSpace(item.ToolCallsJson))
                 message["tool_calls"] = JsonNode.Parse(item.ToolCallsJson);
             if (item.Role == ChatRole.Tool)

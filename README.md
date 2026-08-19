@@ -20,6 +20,9 @@ Gemma 4 E2B/E4Bをローカルで実行し、MCPツールを人間の承認付�
 - `servers` / `mcpServers`形式のJSONからのMCPサーバー設定インポート
 - Tool Callの引数検証、「今回のみ許可」「常に許可」「拒否」と実行結果表示
 - MCPの静的Resourceを検索・プレビューし、次のメッセージへテキスト資料として複数添付
+- MCPの画像／Blob／structured content／resource linkをcontent-partとして保存・表示し、画像対応Gemmaへ入力
+- MCP Resource Templates、Promptsの展開プレビュー、resource subscriptionとpolling fallback
+- D3D12LookDevPTWinUI契約v1の自動検出、8桁コードpairing、非破壊の画像付きLookDevレビュー
 - SQLiteによる会話履歴、Markdown対応チャット表示、会話単位のMarkdown保存
 - Windows Credential Managerを利用したMCP資格情報の保存
 - 推論・モデル登録・MCP・承認・資格情報をまとめて初期化する設定リセット
@@ -27,16 +30,16 @@ Gemma 4 E2B/E4Bをローカルで実行し、MCPツールを人間の承認付�
 - self-contained `win-x64` Portable発行
 - 配布物へのライセンス通知同梱と、設定画面からのライセンス表示
 
-現在は、テキストチャット、MCP Tools、静的なテキストResourceを対象とします。クラウドLLM、マルチモーダル入力、MCP Resource Templates / subscriptions、MCP Prompts、旧SSE transport、OAuth、非Windows GUIは対象外です。
+現在は、テキスト／画像チャット、MCP Tools、Resources、Resource Templates、Prompts、resource subscriptionを対象とします。クラウドLLM、旧SSE transport、OAuth、LAN公開、非Windows GUIは対象外です。
 
 ## 画面とMCP連携例
 
 | LocalMCPChatClient | 接続先のMCPサーバーアプリ |
 |:---:|:---:|
-| ![Gemma 4とMCPツールについて会話しているLocalMCPChatClientのメイン画面](docs/images/image001.png) | ![MCP Serverパネルを開いたD3D12LookDevPT](docs/images/image004.png) |
-| ローカルGemmaが接続済みToolsを理解し、日本語で説明している画面 | [D3D12LookDevPT](https://github.com/shaderjp/D3D12LookDevPT)のレンダラー画面。MCP Serverパネルからローカルエンドポイントを起動する |
+| ![Gemma 4とMCPツールについて会話しているLocalMCPChatClientのメイン画面](docs/images/image001.png) | ![MCP Serverパネルを開いたD3D12LookDevPTWinUI](docs/images/image004.png) |
+| ローカルGemmaが接続済みToolsを理解し、日本語で説明している画面 | [D3D12LookDevPTWinUI](https://github.com/shaderjp/D3D12LookDevPTWinUI)のレンダラー画面。MCP Serverパネルからローカルエンドポイントを起動する |
 
-この例では、LocalMCPChatClientからD3D12/DXRレンダラーへ接続し、利用可能な機能の確認や露出変更をチャットで行っています。接続からTool Call確認までの手順は[D3D12LookDevPTとの連携例](docs/d3d12lookdevpt-integration.md)を参照してください。4枚目の画面は別リポジトリのMCPサーバーアプリであり、本アプリや配布物には含まれません。
+この例では、LocalMCPChatClientからD3D12/DXRレンダラーへ接続し、利用可能な機能の確認や露出変更をチャットで行っています。接続から画像レビュー、安全な変更、非同期benchmarkまでの手順は[D3D12LookDevPTWinUIとの連携例](docs/d3d12lookdevpt-integration.md)を参照してください。4枚目の画面は別リポジトリのMCPサーバーアプリで、単体配布には含まれません。
 
 ## すぐに使う
 
@@ -58,8 +61,9 @@ Portable ZIPを使う場合は任意の書き込み可能なフォルダーへ�
 1. 検出されたハードウェアを確認する
 2. Gemma 4 E2BまたはE4Bを選択する
 3. CPU / CUDA / Vulkanバックエンドを選択する
-4. 各コンポーネントのライセンスを確認する
-5. 「ダウンロードして開始」を選択する
+4. 画像入力（既定オン）を選び、Gemma 4 vision projectorを取得する
+5. 各コンポーネントのライセンスを確認する
+6. 「ダウンロードして開始」を選択する
 
 モデルと`llama-server`を既に持っている場合は「既存ファイルを使用」から登録できます。詳しい手順は[はじめに](docs/getting-started.md)を参照してください。
 
@@ -115,6 +119,7 @@ Visual StudioとCLIの詳しい手順は[開発ガイド](docs/development.md)�
 | llama.cpp | `%LocalAppData%\LocalMCPChatClient\Runtimes` |
 | 一時ダウンロード | `%LocalAppData%\LocalMCPChatClient\Downloads` |
 | 診断ログ | `%LocalAppData%\LocalMCPChatClient\Logs` |
+| MCP画像・artifact | `%LocalAppData%\LocalMCPChatClient\Artifacts` |
 
 秘密として入力したMCPヘッダーと環境変数はWindows Credential Managerに保存され、`settings.json`には参照名だけが記録されます。モデル、ランタイム、DB、ログはGit管理対象外です。
 

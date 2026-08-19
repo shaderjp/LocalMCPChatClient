@@ -18,6 +18,7 @@ public sealed class AppPaths : IAppPaths
     public string RuntimesDirectory => Path.Combine(DataDirectory, "Runtimes");
     public string DownloadsDirectory => Path.Combine(DataDirectory, "Downloads");
     public string LogsDirectory => Path.Combine(DataDirectory, "Logs");
+    public string ArtifactsDirectory => Path.Combine(DataDirectory, "Artifacts");
 
     public void EnsureCreated()
     {
@@ -26,5 +27,6 @@ public sealed class AppPaths : IAppPaths
         Directory.CreateDirectory(RuntimesDirectory);
         Directory.CreateDirectory(DownloadsDirectory);
         Directory.CreateDirectory(LogsDirectory);
+        Directory.CreateDirectory(ArtifactsDirectory);
     }
 }
