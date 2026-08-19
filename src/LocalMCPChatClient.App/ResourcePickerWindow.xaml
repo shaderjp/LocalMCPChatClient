@@ -17,7 +17,8 @@
         <ItemsControl Grid.Row="1" ItemsSource="{Binding Notices}" Margin="0,8,0,4">
             <ItemsControl.ItemTemplate><DataTemplate><TextBlock Text="{Binding}" Foreground="#FBBF24" TextWrapping="Wrap"/></DataTemplate></ItemsControl.ItemTemplate>
         </ItemsControl>
-        <Grid Grid.Row="2">
+        <TabControl Grid.Row="2" Background="{StaticResource PanelBrush}">
+        <TabItem Header="Resources"><Grid>
             <Grid.ColumnDefinitions><ColumnDefinition Width="1.05*"/><ColumnDefinition Width="8"/><ColumnDefinition Width="0.95*"/></Grid.ColumnDefinitions>
             <ListBox Grid.Column="0" ItemsSource="{Binding ResourcesView}" SelectedItem="{Binding SelectedResource}" BorderBrush="#334155">
                 <ListBox.GroupStyle>
@@ -47,7 +48,32 @@
                 <TextBox Grid.Row="1" Text="{Binding PreviewText}" IsReadOnly="True" AcceptsReturn="True" TextWrapping="Wrap"
                          VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto" Margin="0,8,0,0"/>
             </Grid>
-        </Grid>
+        </Grid></TabItem>
+        <TabItem Header="Templates">
+            <Grid Margin="10">
+                <Grid.ColumnDefinitions><ColumnDefinition Width="1*"/><ColumnDefinition Width="1.2*"/></Grid.ColumnDefinitions>
+                <ListBox ItemsSource="{Binding Templates}" SelectedItem="{Binding SelectedTemplate}" DisplayMemberPath="Name"/>
+                <StackPanel Grid.Column="1" Margin="12,0,0,0">
+                    <TextBlock Text="URI Templateを実際のResource URIへ展開してください。" TextWrapping="Wrap" Foreground="{StaticResource MutedTextBrush}"/>
+                    <TextBox Text="{Binding TemplateUri, UpdateSourceTrigger=PropertyChanged}" Margin="0,8" TextWrapping="Wrap"/>
+                    <Button Content="このURIをResourceとして追加" Click="AddTemplate_Click" HorizontalAlignment="Left" Background="#0369A1"/>
+                </StackPanel>
+            </Grid>
+        </TabItem>
+        <TabItem Header="Prompts">
+            <Grid Margin="10">
+                <Grid.ColumnDefinitions><ColumnDefinition Width="1*"/><ColumnDefinition Width="1.4*"/></Grid.ColumnDefinitions>
+                <ListBox ItemsSource="{Binding Prompts}" SelectedItem="{Binding SelectedPrompt}" DisplayMemberPath="Name"/>
+                <Grid Grid.Column="1" Margin="12,0,0,0">
+                    <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+                    <TextBlock Text="引数（JSON object）"/>
+                    <DockPanel Grid.Row="1" Margin="0,5,0,8"><Button DockPanel.Dock="Right" Content="展開結果をプレビュー" Command="{Binding PreviewPromptCommand}"/><TextBox Text="{Binding PromptArgumentsJson}"/></DockPanel>
+                    <TextBox Grid.Row="2" Text="{Binding PromptPreview}" IsReadOnly="True" AcceptsReturn="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto"/>
+                    <Button Grid.Row="3" Content="プレビューしたPromptを会話へ投入" Click="InsertPrompt_Click" HorizontalAlignment="Right" Background="#0369A1" Margin="0,8,0,0"/>
+                </Grid>
+            </Grid>
+        </TabItem>
+        </TabControl>
         <TextBlock Grid.Row="3" Text="{Binding StatusText}" Foreground="{StaticResource MutedTextBrush}" Margin="0,8"/>
         <StackPanel Grid.Row="4" Orientation="Horizontal" HorizontalAlignment="Right">
             <Button Content="キャンセル" IsCancel="True" MinWidth="90"/>

@@ -1,3 +1,5 @@
+using System.Diagnostics;
+using System.IO;
 using System.Windows;
 using LocalMCPChatClient.App.ViewModels;
 using Microsoft.Win32;
@@ -68,6 +70,12 @@ public partial class SettingsWindow : Window
         if (MessageBox.Show(this, "すべてのチャット履歴を削除します。この操作は元に戻せません。", "履歴の削除",
                 MessageBoxButton.YesNo, MessageBoxImage.Warning) == MessageBoxResult.Yes)
             await _viewModel.ClearHistoryAsync();
+    }
+
+    private void OpenArtifactFolder_Click(object sender, RoutedEventArgs e)
+    {
+        Directory.CreateDirectory(_viewModel.ArtifactDirectory);
+        Process.Start(new ProcessStartInfo(_viewModel.ArtifactDirectory) { UseShellExecute = true });
     }
 
     private async void ResetSettings_Click(object sender, RoutedEventArgs e)

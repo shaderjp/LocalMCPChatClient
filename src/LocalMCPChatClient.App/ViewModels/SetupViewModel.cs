@@ -23,6 +23,7 @@ public sealed partial class SetupViewModel(
     [ObservableProperty] private string _progressText = "モデルと推論バックエンドを選択してください。";
     [ObservableProperty] private double _progressValue;
     [ObservableProperty] private bool _acceptLicense;
+    [ObservableProperty] private bool _enableVision = true;
     [ObservableProperty] private bool _isInstalling;
 
     public async Task InitializeAsync()
@@ -59,13 +60,25 @@ public sealed partial class SetupViewModel(
             var modelArtifact = BuiltInArtifacts.CreateModelArtifact(SelectedModel, currentSettings.ModelDirectory ?? paths.ModelsDirectory);
             ProgressText = SelectedModel.DisplayName + " を準備中";
             var installedModelPath = await artifactInstaller.InstallAsync(modelArtifact, CreateProgress(SelectedModel.DisplayName), _cancellation.Token);
+            string? installedProjectorPath = null;
+            var projectorArtifact = EnableVision
+                ? BuiltInArtifacts.CreateVisionProjectorArtifact(SelectedModel, currentSettings.ModelDirectory ?? paths.ModelsDirectory)
+                : null;
+            if (projectorArtifact is not null)
+            {
+                ProgressText = projectorArtifact.DisplayName + " を準備中";
+                installedProjectorPath = await artifactInstaller.InstallAsync(projectorArtifact, CreateProgress(projectorArtifact.DisplayName), _cancellation.Token);
+            }
             await settingsStore.UpdateAsync(settings => settings with
             {
                 SetupCompleted = true,
                 SelectedModelId = SelectedModel.Id,
                 InferenceMode = InferenceMode.Auto,
                 ModelDirectory = currentSettings.ModelDirectory ?? paths.ModelsDirectory,
-                Models = settings.Models.Select(item => item.Id == SelectedModel.Id ? item with { LocalPath = installedModelPath } : item).ToList()
+                EnableVision = EnableVision,
+                Models = settings.Models.Select(item => item.Id == SelectedModel.Id
+                    ? item with { LocalPath = installedModelPath, VisionProjectorPath = installedProjectorPath }
+                    : item).ToList()
             }, _cancellation.Token);
             ProgressValue = 100;
             ProgressText = "セットアップが完了しました。";
@@ -92,6 +105,7 @@ public sealed partial class SetupViewModel(
             SetupCompleted = true,
             SelectedModelId = SelectedModel.Id,
             CustomRuntimePath = importedRuntime,
+            EnableVision = false,
             Models = settings.Models.Select(model => model.Id == SelectedModel.Id ? model with { LocalPath = importedModel } : model).ToList()
         });
         ProgressText = "既存のモデルとllama-serverを登録しました。";

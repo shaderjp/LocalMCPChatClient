@@ -136,6 +136,46 @@ public sealed class LlamaInferenceServiceTests
         Assert.True(updates.Last().Timing?.GeneratedTokensPerSecond > 0);
     }
 
+    [Fact]
+    public async Task Vision_payload_places_images_before_text_and_text_only_fallback_is_explicit()
+    {
+        const string sse = "data: {\"choices\":[]}\n\ndata: [DONE]\n\n";
+        var bodies = new List<string>();
+        var handler = new StubHttpHandler(request =>
+        {
+            if (request.RequestUri?.AbsolutePath == "/completion")
+                return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("{\"content\":\"x\"}") };
+            bodies.Add(request.Content!.ReadAsStringAsync().GetAwaiter().GetResult());
+            return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(sse, Encoding.UTF8, "text/event-stream") };
+        });
+        using var paths = new TestPaths();
+        paths.EnsureCreated();
+        var artifacts = new ArtifactStore(paths);
+        var png = Convert.FromBase64String("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=");
+        var stored = await artifacts.StoreAsync(png, "image/png", "pixel.png");
+        var message = new ChatMessage(Guid.NewGuid(), Guid.NewGuid(), ChatRole.User, "画像を確認",
+            DateTimeOffset.UtcNow, ContentParts: [new McpContentPart(McpContentKind.Image, MimeType: "image/png", Artifact: stored)]);
+        var model = new ModelProfile { Id = "vision", Modalities = [InputModality.Text, InputModality.Image] };
+
+        var service = new LlamaInferenceService(new StubRuntimeManager(), new StubHttpClientFactory(handler), artifacts);
+        await service.StartAsync(new InferenceProfile { EnableVision = true }, model);
+        await CollectAsync(service.StreamCompletionAsync(new InferenceRequest("vision", [message], [])));
+        using (var document = JsonDocument.Parse(bodies[0]))
+        {
+            var content = document.RootElement.GetProperty("messages")[0].GetProperty("content");
+            Assert.Equal("image_url", content[0].GetProperty("type").GetString());
+            Assert.StartsWith("data:image/png;base64,", content[0].GetProperty("image_url").GetProperty("url").GetString());
+            Assert.Equal("text", content[1].GetProperty("type").GetString());
+        }
+
+        await service.StopAsync();
+        await service.StartAsync(new InferenceProfile { EnableVision = false }, model);
+        await CollectAsync(service.StreamCompletionAsync(new InferenceRequest("vision", [message], [])));
+        using var fallback = JsonDocument.Parse(bodies[1]);
+        var fallbackContent = fallback.RootElement.GetProperty("messages")[0].GetProperty("content").GetString();
+        Assert.Contains("モデルは添付画像を見ていません", fallbackContent);
+    }
+
     private static async Task<List<T>> CollectAsync<T>(IAsyncEnumerable<T> source)
     {
         var result = new List<T>();
@@ -274,7 +314,8 @@ internal sealed class StubRuntimeManager : IInferenceRuntimeManager
     public Task<RuntimeState> StartAsync(InferenceProfile profile, ModelProfile model, CancellationToken cancellationToken = default)
     {
         StartCount++;
-        State = new RuntimeState(RuntimeStatus.Ready, RuntimeBackend.Cpu, new Uri("http://127.0.0.1:12345/"), "model.gguf", AuthenticationToken: "runtime-key");
+        State = new RuntimeState(RuntimeStatus.Ready, RuntimeBackend.Cpu, new Uri("http://127.0.0.1:12345/"), "model.gguf",
+            AuthenticationToken: "runtime-key", VisionEnabled: profile.EnableVision && model.Modalities.Contains(InputModality.Image));
         StateChanged?.Invoke(this, State);
         return Task.FromResult(State);
     }
@@ -362,18 +403,23 @@ internal sealed class ResourceMcpManager(bool failRead = false) : IMcpConnection
 {
     public int ReadCount { get; private set; }
     public event EventHandler<McpConnectionInfo>? ConnectionChanged { add { } remove { } }
+    public event EventHandler<McpResourceReference>? ResourceChanged { add { } remove { } }
     public Task<McpConnectionInfo> ConnectAsync(McpServerProfile profile, CancellationToken cancellationToken = default) => throw new NotSupportedException();
     public Task<McpConnectionInfo> TestAsync(McpServerProfile profile, CancellationToken cancellationToken = default) => throw new NotSupportedException();
     public Task DisconnectAsync(string serverId, CancellationToken cancellationToken = default) => Task.CompletedTask;
     public Task<IReadOnlyList<McpConnectionInfo>> GetConnectionsAsync(CancellationToken cancellationToken = default) => Task.FromResult<IReadOnlyList<McpConnectionInfo>>([]);
     public Task<IReadOnlyList<ToolDefinition>> GetToolsAsync(CancellationToken cancellationToken = default) => Task.FromResult<IReadOnlyList<ToolDefinition>>([]);
     public Task<IReadOnlyList<McpResourceCatalog>> GetResourceCatalogsAsync(CancellationToken cancellationToken = default) => Task.FromResult<IReadOnlyList<McpResourceCatalog>>([]);
+    public Task<IReadOnlyList<McpResourceTemplateDefinition>> GetResourceTemplatesAsync(CancellationToken cancellationToken = default) => Task.FromResult<IReadOnlyList<McpResourceTemplateDefinition>>([]);
+    public Task<IReadOnlyList<McpPromptDefinition>> GetPromptsAsync(CancellationToken cancellationToken = default) => Task.FromResult<IReadOnlyList<McpPromptDefinition>>([]);
+    public Task<McpPromptResult> GetPromptAsync(string serverId, string promptName, IReadOnlyDictionary<string, object?> arguments, CancellationToken cancellationToken = default) => throw new NotSupportedException();
     public Task<McpResourceSnapshot> ReadResourceAsync(McpResourceReference reference, CancellationToken cancellationToken = default)
     {
         ReadCount++;
         if (failRead) throw new InvalidOperationException("read failed");
         return Task.FromResult(new McpResourceSnapshot(reference.ServerId, reference.ServerDisplayName, reference.Uri, reference.Name, reference.MimeType, "resource body", DateTimeOffset.UtcNow, 13));
     }
+    public Task<IAsyncDisposable> SubscribeToResourceAsync(McpResourceReference reference, CancellationToken cancellationToken = default) => throw new NotSupportedException();
     public Task<McpToolResult> CallToolAsync(ToolCallRequest request, CancellationToken cancellationToken = default) => throw new NotSupportedException();
     public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 }
@@ -386,6 +432,7 @@ internal sealed class RecordingMcpManager : IMcpConnectionManager
 
     public int CallCount { get; private set; }
     public event EventHandler<McpConnectionInfo>? ConnectionChanged { add { } remove { } }
+    public event EventHandler<McpResourceReference>? ResourceChanged { add { } remove { } }
     public Task<McpConnectionInfo> ConnectAsync(McpServerProfile profile, CancellationToken cancellationToken = default) => throw new NotSupportedException();
     public Task<McpConnectionInfo> TestAsync(McpServerProfile profile, CancellationToken cancellationToken = default) => throw new NotSupportedException();
     public Task DisconnectAsync(string serverId, CancellationToken cancellationToken = default) => Task.CompletedTask;
@@ -394,7 +441,15 @@ internal sealed class RecordingMcpManager : IMcpConnectionManager
         => Task.FromResult<IReadOnlyList<ToolDefinition>>([new("weather__forecast", "weather", "forecast", "forecast", Schema)]);
     public Task<IReadOnlyList<McpResourceCatalog>> GetResourceCatalogsAsync(CancellationToken cancellationToken = default)
         => Task.FromResult<IReadOnlyList<McpResourceCatalog>>([]);
+    public Task<IReadOnlyList<McpResourceTemplateDefinition>> GetResourceTemplatesAsync(CancellationToken cancellationToken = default)
+        => Task.FromResult<IReadOnlyList<McpResourceTemplateDefinition>>([]);
+    public Task<IReadOnlyList<McpPromptDefinition>> GetPromptsAsync(CancellationToken cancellationToken = default)
+        => Task.FromResult<IReadOnlyList<McpPromptDefinition>>([]);
+    public Task<McpPromptResult> GetPromptAsync(string serverId, string promptName, IReadOnlyDictionary<string, object?> arguments, CancellationToken cancellationToken = default)
+        => throw new NotSupportedException();
     public Task<McpResourceSnapshot> ReadResourceAsync(McpResourceReference reference, CancellationToken cancellationToken = default)
+        => throw new NotSupportedException();
+    public Task<IAsyncDisposable> SubscribeToResourceAsync(McpResourceReference reference, CancellationToken cancellationToken = default)
         => throw new NotSupportedException();
     public Task<McpToolResult> CallToolAsync(ToolCallRequest request, CancellationToken cancellationToken = default)
     {

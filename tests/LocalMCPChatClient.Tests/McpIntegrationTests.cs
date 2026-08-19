@@ -31,7 +31,7 @@ public sealed class McpIntegrationTests
 
         var connection = await manager.ConnectAsync(profile);
         Assert.Equal(McpConnectionState.Connected, connection.State);
-        Assert.Equal(2, connection.ToolCount);
+        Assert.Equal(3, connection.ToolCount);
         Assert.True(connection.SupportsResources);
 
         var tools = await manager.GetToolsAsync();
@@ -48,7 +48,7 @@ public sealed class McpIntegrationTests
 
         var catalog = Assert.Single(await manager.GetResourceCatalogsAsync());
         Assert.Null(catalog.Error);
-        Assert.Equal(6, catalog.Resources.Count);
+        Assert.Equal(7, catalog.Resources.Count);
         var welcome = Assert.Single(catalog.Resources, resource => resource.Uri == "test://documents/welcome");
         var welcomeSnapshot = await manager.ReadResourceAsync(McpResourceReference.FromDefinition(welcome));
         Assert.Contains("こんにちは", welcomeSnapshot.Content);
@@ -66,6 +66,34 @@ public sealed class McpIntegrationTests
 
         var blob = Assert.Single(catalog.Resources, resource => resource.Uri == "test://documents/blob");
         await Assert.ThrowsAsync<NotSupportedException>(() => manager.ReadResourceAsync(McpResourceReference.FromDefinition(blob)));
+
+        using (var paths = new TestPaths())
+        {
+            paths.EnsureCreated();
+            var artifacts = new ArtifactStore(paths);
+            await using var artifactManager = new McpConnectionManager(
+                new MemorySecretStore(), NullLoggerFactory.Instance, NullLogger<McpConnectionManager>.Instance, artifacts);
+            var artifactProfile = profile with { Id = "artifact-test-server" };
+            await artifactManager.ConnectAsync(artifactProfile);
+            var artifactCatalog = Assert.Single(await artifactManager.GetResourceCatalogsAsync());
+            var pixel = Assert.Single(artifactCatalog.Resources, resource => resource.Uri == "test://documents/pixel.png");
+            var pixelSnapshot = await artifactManager.ReadResourceAsync(McpResourceReference.FromDefinition(pixel));
+            var imagePart = Assert.Single(pixelSnapshot.Parts!, part => part.Kind == McpContentKind.Image);
+            Assert.NotNull(imagePart.Artifact);
+            Assert.True(File.Exists(artifacts.GetAbsolutePath(imagePart.Artifact!)));
+
+            var imageTool = Assert.Single(await artifactManager.GetToolsAsync(), tool => tool.OriginalName == "image");
+            var imageResult = await artifactManager.CallToolAsync(new ToolCallRequest("image-call", imageTool.NamespacedName, "{}"));
+            Assert.Contains(imageResult.Parts!, part => part.Kind == McpContentKind.Image && part.Artifact is not null);
+
+            var templates = await artifactManager.GetResourceTemplatesAsync();
+            Assert.Contains(templates, template => template.UriTemplate == "test://templates/{name}");
+            var prompts = await artifactManager.GetPromptsAsync();
+            var prompt = Assert.Single(prompts, prompt => prompt.Name == "review");
+            var expanded = await artifactManager.GetPromptAsync(prompt.ServerId, prompt.Name,
+                new Dictionary<string, object?> { ["subject"] = "viewport" });
+            Assert.Contains(expanded.Parts, part => part.Text?.Contains("Review this: viewport", StringComparison.Ordinal) == true);
+        }
 
         var large = Assert.Single(catalog.Resources, resource => resource.Uri == "test://documents/large");
         var largeSnapshot = await manager.ReadResourceAsync(McpResourceReference.FromDefinition(large));
@@ -249,8 +277,11 @@ public sealed class McpIntegrationTests
         const string tokenVariable = "LOCAL_MCP_CHAT_EXTERNAL_MCP_TOKEN";
         var token = Environment.GetEnvironmentVariable(tokenVariable);
 
+        using var externalPaths = new TestPaths();
+        externalPaths.EnsureCreated();
+        var externalArtifacts = new ArtifactStore(externalPaths);
         await using var manager = new McpConnectionManager(
-            new MemorySecretStore(), NullLoggerFactory.Instance, NullLogger<McpConnectionManager>.Instance);
+            new MemorySecretStore(), NullLoggerFactory.Instance, NullLogger<McpConnectionManager>.Instance, externalArtifacts);
         var connection = await manager.ConnectAsync(new McpServerProfile
         {
             Id = "external-d3d12lookdevpt",
@@ -264,10 +295,32 @@ public sealed class McpIntegrationTests
         });
 
         Assert.True(connection.State == McpConnectionState.Connected, connection.Error);
+        Assert.Equal("1.0", connection.LookDevContractVersion);
         var stateTool = Assert.Single(await manager.GetToolsAsync(), tool => tool.OriginalName == "lookdevpt.get_state");
         var result = await manager.CallToolAsync(new ToolCallRequest("external-state", stateTool.NamespacedName, "{}"));
         Assert.False(result.IsError, result.Content);
         Assert.Contains("\"ok\":true", result.Content);
+
+        var captureTool = Assert.Single(await manager.GetToolsAsync(), tool => tool.OriginalName == "lookdevpt.capture_viewport");
+        var capture = await manager.CallToolAsync(new ToolCallRequest("external-capture", captureTool.NamespacedName, "{}"));
+        Assert.False(capture.IsError, capture.Content);
+        Assert.Contains(capture.Parts!, part => part.Kind == McpContentKind.Image && part.Artifact is not null);
+        Assert.Contains(capture.Parts!, part => part.Kind == McpContentKind.ResourceLink && part.Uri == "lookdevpt://captures/1.png");
+
+        var startReviewTool = Assert.Single(await manager.GetToolsAsync(), tool => tool.OriginalName == "lookdevpt.start_review");
+        var started = await manager.CallToolAsync(new ToolCallRequest("external-review-start", startReviewTool.NamespacedName, "{\"preset\":\"quick\"}"));
+        Assert.False(started.IsError, started.Content);
+        Assert.Contains("\"state\":\"running\"", started.Content);
+        var getReviewTool = Assert.Single(await manager.GetToolsAsync(), tool => tool.OriginalName == "lookdevpt.get_review");
+        var completed = await manager.CallToolAsync(new ToolCallRequest("external-review-get", getReviewTool.NamespacedName, "{\"reviewId\":1}"));
+        Assert.False(completed.IsError, completed.Content);
+        Assert.Contains("\"state\":\"completed\"", completed.Content);
+
+        var heatmap = await manager.ReadResourceAsync(new McpResourceReference(
+            "external-d3d12lookdevpt", "D3D12LookDevPT", "lookdevpt://comparisons/1/heatmap.png", "comparison heatmap", "image/png"));
+        var heatmapImage = Assert.Single(heatmap.Parts!, part => part.Kind == McpContentKind.Image);
+        Assert.NotNull(heatmapImage.Artifact);
+        Assert.True(File.Exists(externalArtifacts.GetAbsolutePath(heatmapImage.Artifact!)));
     }
 
     private static string GetServerPath()

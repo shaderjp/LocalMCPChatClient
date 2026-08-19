@@ -70,4 +70,9 @@ public static class BuiltInArtifacts
         Size = model.Size,
         DestinationDirectory = destinationDirectory
     };
+
+    public static ArtifactDescriptor? CreateVisionProjectorArtifact(ModelProfile model, string? destinationDirectory = null)
+        => model.VisionProjector is null
+            ? null
+            : model.VisionProjector with { DestinationDirectory = destinationDirectory };
 }

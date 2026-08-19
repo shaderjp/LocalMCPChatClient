@@ -53,13 +53,21 @@
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto"/><ColumnDefinition Width="260"/>
                         <ColumnDefinition Width="Auto"/><ColumnDefinition Width="130"/>
-                        <ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="100"/><ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
                     <TextBlock Text="モデル" VerticalAlignment="Center" Foreground="{StaticResource MutedTextBrush}" />
                     <ComboBox Grid.Column="1" ItemsSource="{Binding Models}" SelectedItem="{Binding SelectedModel}" DisplayMemberPath="DisplayName" />
                     <TextBlock Grid.Column="2" Text="推論" VerticalAlignment="Center" Margin="12,0,0,0" Foreground="{StaticResource MutedTextBrush}" />
                     <ComboBox Grid.Column="3" ItemsSource="{Binding InferenceModes}" SelectedItem="{Binding SelectedInferenceMode}" />
                     <TextBlock Grid.Column="5" Text="{Binding McpStatusText}" VerticalAlignment="Center" Foreground="{StaticResource AccentBrush}" Margin="10,0" />
+                    <ComboBox Grid.Column="6" ItemsSource="{Binding ReviewPresets}" SelectedItem="{Binding SelectedReviewPreset}" />
+                    <StackPanel Grid.Column="7" Orientation="Horizontal" Margin="6,0,0,0">
+                        <Button Content="現在のシーンをレビュー" Command="{Binding ReviewSceneCommand}" Background="#0369A1" />
+                        <Button Content="安全な変更" Command="{Binding SafeApplyCommand}" Margin="5,0,0,0"
+                                ToolTip="入力欄のactions JSONを検証→一括承認→適用→比較→採用または復元します。" />
+                        <Button Content="Benchmark" Command="{Binding RunBenchmarkCommand}" Margin="5,0,0,0"
+                                ToolTip="入力欄のJSON（cameraPath, kind, frames, warmup, seed。任意でcompareWithBenchmarkId）から非同期benchmarkを実行します。" />
+                    </StackPanel>
                 </Grid>
             </Border>
 
@@ -98,6 +106,41 @@
                                                             <TextBlock Text="{Binding Status}" Foreground="#FBBF24" FontSize="11"/>
                                                             <TextBox Text="{Binding Content}" IsReadOnly="True" AcceptsReturn="True" TextWrapping="Wrap"
                                                                      MaxHeight="240" VerticalScrollBarVisibility="Auto" Margin="0,7,0,0"/>
+                                                        </StackPanel>
+                                                    </Border>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </Expander>
+                                    <Expander Header="{Binding ArtifactSummary}" IsExpanded="True" Margin="0,0,0,8">
+                                        <Expander.Style>
+                                            <Style TargetType="Expander">
+                                                <Setter Property="Visibility" Value="Collapsed"/>
+                                                <Style.Triggers><DataTrigger Binding="{Binding HasArtifacts}" Value="True"><Setter Property="Visibility" Value="Visible"/></DataTrigger></Style.Triggers>
+                                            </Style>
+                                        </Expander.Style>
+                                        <ItemsControl ItemsSource="{Binding Artifacts}">
+                                            <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <Border BorderBrush="#475569" BorderThickness="1" CornerRadius="6" Padding="8" Margin="0,4,8,4" MaxWidth="360">
+                                                        <StackPanel>
+                                                            <Image Source="{Binding LocalPath}" Width="320" MaxHeight="240" Stretch="Uniform">
+                                                                <Image.Style>
+                                                                    <Style TargetType="Image">
+                                                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                                                        <Style.Triggers><DataTrigger Binding="{Binding IsImage}" Value="True"><Setter Property="Visibility" Value="Visible"/></DataTrigger></Style.Triggers>
+                                                                    </Style>
+                                                                </Image.Style>
+                                                            </Image>
+                                                            <TextBlock Text="{Binding Name}" FontWeight="Bold" TextTrimming="CharacterEllipsis" Margin="0,5,0,0"/>
+                                                            <TextBlock Text="{Binding MimeType}" Foreground="{StaticResource MutedTextBrush}" FontSize="11"/>
+                                                            <TextBlock Text="{Binding Uri}" Foreground="#93C5FD" FontSize="11" TextWrapping="Wrap"/>
+                                                            <TextBlock Text="{Binding SizeLabel}" Foreground="{StaticResource MutedTextBrush}" FontSize="11"/>
+                                                            <StackPanel Orientation="Horizontal" Margin="0,5,0,0">
+                                                                <Button Content="開く" Click="OpenArtifact_Click" Tag="{Binding}"/>
+                                                                <Button Content="名前を付けて保存" Click="SaveArtifact_Click" Tag="{Binding}"/>
+                                                            </StackPanel>
                                                         </StackPanel>
                                                     </Border>
                                                 </DataTemplate>

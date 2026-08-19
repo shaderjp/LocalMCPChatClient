@@ -68,7 +68,7 @@ public sealed class AgentChatService(
                 activeAssistantText = assistantText;
                 var calls = new List<ToolCallRequest>();
                 await foreach (var update in inferenceService.StreamCompletionAsync(
-                    new InferenceRequest(model.Id, messages, tools, profile.Temperature, profile.MaxOutputTokens), cancellationToken).ConfigureAwait(false))
+                    new InferenceRequest(model.Id, messages, tools, profile.Temperature, profile.MaxOutputTokens, profile.ImageTokenBudget), cancellationToken).ConfigureAwait(false))
                 {
                     if (!string.IsNullOrEmpty(update.TextDelta))
                     {
@@ -153,7 +153,7 @@ public sealed class AgentChatService(
 
                     await conversationStore.AppendMessageAsync(new ChatMessage(
                         Guid.NewGuid(), conversationId, ChatRole.Tool, result.Content, DateTimeOffset.UtcNow,
-                        result.ToolCallId, result.ToolName, IsError: result.IsError), cancellationToken).ConfigureAwait(false);
+                        result.ToolCallId, result.ToolName, IsError: result.IsError, ContentParts: result.Parts), cancellationToken).ConfigureAwait(false);
                     yield return new AgentEvent(AgentEventKind.ToolCompleted, ToolCall: call, ToolResult: result);
                 }
             }
@@ -211,7 +211,12 @@ public sealed class AgentChatService(
             builder.AppendLine(resource.Content);
             builder.Append("</mcp-resource>");
         }
-        return message with { Content = builder.ToString() };
+        var parts = message.ResourceSnapshots
+            .SelectMany(resource => resource.Parts ?? [])
+            .Where(part => part.Kind == McpContentKind.Image && part.Artifact is not null)
+            .Take(4)
+            .ToList();
+        return message with { Content = builder.ToString(), ContentParts = parts.Count == 0 ? message.ContentParts : parts };
     }
 
     private static string CreateTitle(string text, IReadOnlyList<McpResourceSnapshot> snapshots)

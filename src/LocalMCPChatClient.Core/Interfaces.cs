@@ -9,6 +9,7 @@ public interface IAppPaths
     string RuntimesDirectory { get; }
     string DownloadsDirectory { get; }
     string LogsDirectory { get; }
+    string ArtifactsDirectory { get; }
     void EnsureCreated();
 }
 
@@ -69,14 +70,29 @@ public interface IInferenceRuntimeManager : IAsyncDisposable
 public interface IMcpConnectionManager : IAsyncDisposable
 {
     event EventHandler<McpConnectionInfo>? ConnectionChanged;
+    event EventHandler<McpResourceReference>? ResourceChanged;
     Task<McpConnectionInfo> ConnectAsync(McpServerProfile profile, CancellationToken cancellationToken = default);
     Task<McpConnectionInfo> TestAsync(McpServerProfile profile, CancellationToken cancellationToken = default);
     Task DisconnectAsync(string serverId, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<McpConnectionInfo>> GetConnectionsAsync(CancellationToken cancellationToken = default);
     Task<IReadOnlyList<ToolDefinition>> GetToolsAsync(CancellationToken cancellationToken = default);
     Task<IReadOnlyList<McpResourceCatalog>> GetResourceCatalogsAsync(CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<McpResourceTemplateDefinition>> GetResourceTemplatesAsync(CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<McpPromptDefinition>> GetPromptsAsync(CancellationToken cancellationToken = default);
+    Task<McpPromptResult> GetPromptAsync(string serverId, string promptName, IReadOnlyDictionary<string, object?> arguments, CancellationToken cancellationToken = default);
     Task<McpResourceSnapshot> ReadResourceAsync(McpResourceReference reference, CancellationToken cancellationToken = default);
+    Task<IAsyncDisposable> SubscribeToResourceAsync(McpResourceReference reference, CancellationToken cancellationToken = default);
     Task<McpToolResult> CallToolAsync(ToolCallRequest request, CancellationToken cancellationToken = default);
+}
+
+public interface IArtifactStore
+{
+    Task<StoredArtifact> StoreAsync(ReadOnlyMemory<byte> data, string mimeType, string displayName, string? sourceUri = null, CancellationToken cancellationToken = default);
+    Task<byte[]> ReadAsync(StoredArtifact artifact, CancellationToken cancellationToken = default);
+    Task<(byte[] Data, string MimeType)> ReadForInferenceAsync(StoredArtifact artifact, CancellationToken cancellationToken = default);
+    string GetAbsolutePath(StoredArtifact artifact);
+    Task<long> GetStoredByteCountAsync(CancellationToken cancellationToken = default);
+    Task CollectGarbageAsync(IReadOnlySet<string> referencedSha256s, CancellationToken cancellationToken = default);
 }
 
 public interface IMcpProfileImporter

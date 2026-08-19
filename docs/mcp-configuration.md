@@ -97,9 +97,9 @@ stdioサーバーへ渡す環境変数は制限された既定セットと、プ
 
 MCP C# SDK 2.1.0が最新のプロトコルを優先し、旧サーバーには自動的にフォールバックするため、通常は`MCP-Protocol-Version`を指定しません。旧サーバー向けに明示した場合は、一般の追加ヘッダーとして重複送信せず、SDKのプロトコル固定値として扱います。
 
-## D3D12LookDevPTの設定
+## D3D12LookDevPTWinUIの設定
 
-[shaderjp/D3D12LookDevPT](https://github.com/shaderjp/D3D12LookDevPT)は、Direct3D 12 / DXR LookDevパストレーサーを操作する別アプリです。実行中のレンダラーを参照・操作するStreamable HTTP形式のローカルMCPサーバーを備えています。
+D3D12LookDevPTWinUIは、Direct3D 12 / DXR LookDevパストレーサーを操作する別アプリです。実行中のレンダラーを参照・操作するStreamable HTTP形式のローカルMCPサーバーと、LocalMCPChatClient向け契約v1を備えています。
 
 ![D3D12LookDevPTのレンダラー画面とMCP Serverパネル](images/image004.png)
 
@@ -113,14 +113,16 @@ MCP C# SDK 2.1.0が最新のプロトコルを優先し、旧サーバーには�
 2. 「MCP Server」パネルを開く
 3. Portを`8777`、Request Timeoutを`120`秒にする
 4. Access Modeを選択する。最初は変更操作をサーバー側でも確認できる`confirm_mutations`を推奨
-5. 「Copy Token」でBearerトークンを取得する
-6. 「Start Server」を選択し、表示が`http://127.0.0.1:8777/mcp`になったことを確認する
+5. 「Start Server」を選択し、表示が`http://127.0.0.1:8777/mcp`になったことを確認する
+6. 「Pair LocalMCPChatClient」で8桁コードを発行する
 
 トークンはREADME、スクリーンショット、チャット、Git管理ファイルへ記載しないでください。環境変数方式を使う場合は、Windowsのユーザー環境変数`D3D12LOOKDEVPT_MCP_TOKEN`へトークンだけを設定し、LocalMCPChatClientを完全に終了してから起動し直します。
 
 環境変数を使わない場合は、「Bearerトークンの環境変数名」を空にし、「秘密のHTTPヘッダー」へ`Authorization=Bearer <token>`を入力できます。この値はWindows Credential Managerへ保存されます。2つの方式は同時に設定しないでください。
 
 ### クライアント側の入力
+
+推奨経路は「設定」→「MCP接続」上部にendpointと8桁コードを入力してペアリングする方法です。`GET /.well-known/lookdevpt/v1`で契約とendpointを確認し、`POST /pair`で交換したクライアント別tokenをWindows Credential Managerへ保存します。手動設定は互換経路として残っています。
 
 D3D12LookDevPTリポジトリにある[`config/LocalMCPChatClient.mcp.json`](https://github.com/shaderjp/D3D12LookDevPT/blob/main/config/LocalMCPChatClient.mcp.json)を「JSONからインポート」で読み込むと、次の設定が追加されます。
 
@@ -151,7 +153,7 @@ tool_timeout_sec = 120
 
 アプリ内部の保存形式の参考例は[mcp-profile-examples.json](mcp-profile-examples.json)にも収録しています。インポート対象は、この内部形式ではなく、ルートに`servers`または`mcpServers`を持つ外部ツール向け形式です。
 
-サーバーの起動からチャットで露出を変更するまでの詳しい流れは[D3D12LookDevPTとの連携例](d3d12lookdevpt-integration.md)を参照してください。サーバー側のTools、Resources、Promptsの完全な一覧は、同リポジトリの[MCPサーバー文書](https://github.com/shaderjp/D3D12LookDevPT/blob/main/docs/mcp.ja.md)が正です。LocalMCPChatClientの初期版は、そのうちToolsだけをモデルへ公開します。
+サーバーの起動から画像レビューまでの詳しい流れは[D3D12LookDevPTWinUIとの連携](d3d12lookdevpt-integration.md)を参照してください。LocalMCPChatClientはToolsに加えて、画像Resources、structured content、Resource Templates、Prompts、resource subscriptionを利用します。
 
 ## 秘密情報の扱い
 

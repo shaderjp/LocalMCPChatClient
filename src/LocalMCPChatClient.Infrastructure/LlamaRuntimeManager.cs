@@ -36,6 +36,10 @@ public sealed class LlamaRuntimeManager(
             var modelPath = ResolveModelPath(model);
             if (!File.Exists(modelPath))
                 throw new FileNotFoundException("モデルがインストールされていません。初回設定からモデルを取得してください。", modelPath);
+            var visionProjectorPath = ResolveVisionProjectorPath(model);
+            var visionEnabled = profile.EnableVision && model.Modalities.Contains(InputModality.Image);
+            if (visionEnabled && (string.IsNullOrWhiteSpace(visionProjectorPath) || !File.Exists(visionProjectorPath)))
+                throw new FileNotFoundException("画像入力用mmprojがインストールされていません。設定から画像入力コンポーネントを取得するか、画像入力を無効にしてください。", visionProjectorPath);
 
             if (State.Status == RuntimeStatus.Ready &&
                 string.Equals(State.ModelPath, modelPath, StringComparison.OrdinalIgnoreCase) &&
@@ -68,7 +72,7 @@ public sealed class LlamaRuntimeManager(
 
                 try
                 {
-                    var ready = await StartOneAsync(executable, backend, profile, modelPath, hardware, cancellationToken).ConfigureAwait(false);
+                    var ready = await StartOneAsync(executable, backend, profile, modelPath, visionProjectorPath, visionEnabled, hardware, cancellationToken).ConfigureAwait(false);
                     if (profile.Mode == InferenceMode.Auto)
                     {
                         try
@@ -138,6 +142,8 @@ public sealed class LlamaRuntimeManager(
         RuntimeBackend backend,
         InferenceProfile profile,
         string modelPath,
+        string? visionProjectorPath,
+        bool visionEnabled,
         HardwareCapabilities hardware,
         CancellationToken cancellationToken)
     {
@@ -157,6 +163,7 @@ public sealed class LlamaRuntimeManager(
             RedirectStandardError = true
         };
         AddArgument(startInfo, "--model", modelPath);
+        if (visionEnabled) AddArgument(startInfo, "--mmproj", visionProjectorPath!);
         AddArgument(startInfo, "--host", "127.0.0.1");
         AddArgument(startInfo, "--port", port.ToString());
         AddArgument(startInfo, "--api-key", token);
@@ -173,6 +180,7 @@ public sealed class LlamaRuntimeManager(
         AddArgumentIfSupported(startInfo, help, "--cache-type-k", "f16");
         AddArgumentIfSupported(startInfo, help, "--cache-type-v", "f16");
         AddArgumentIfSupported(startInfo, help, "--parallel", "1");
+        if (visionEnabled) AddArgumentIfSupported(startInfo, help, "--image-max-tokens", profile.ImageTokenBudget.ToString());
         if (backend != RuntimeBackend.Cpu)
         {
             AddArgumentIfSupported(startInfo, help, "--fit", "on");
@@ -211,7 +219,7 @@ public sealed class LlamaRuntimeManager(
                     using var response = await client.GetAsync("health", timeout.Token).ConfigureAwait(false);
                     if (response.IsSuccessStatusCode)
                     {
-                        var ready = new RuntimeState(RuntimeStatus.Ready, backend, endpoint, modelPath, AuthenticationToken: token);
+                        var ready = new RuntimeState(RuntimeStatus.Ready, backend, endpoint, modelPath, AuthenticationToken: token, VisionEnabled: visionEnabled);
                         SetState(ready);
                         return ready;
                     }
@@ -279,6 +287,12 @@ public sealed class LlamaRuntimeManager(
 
     private string ResolveModelPath(ModelProfile model) => Path.GetFullPath(
         !string.IsNullOrWhiteSpace(model.LocalPath) ? model.LocalPath : Path.Combine(paths.ModelsDirectory, model.FileName));
+
+    private string? ResolveVisionProjectorPath(ModelProfile model)
+    {
+        if (!string.IsNullOrWhiteSpace(model.VisionProjectorPath)) return Path.GetFullPath(model.VisionProjectorPath);
+        return model.VisionProjector is null ? null : Path.GetFullPath(Path.Combine(paths.ModelsDirectory, model.VisionProjector.FileName));
+    }
 
     private string? ResolveRuntimePath(string? customPath, RuntimeBackend backend)
     {

@@ -1,5 +1,8 @@
 using System.Collections.ObjectModel;
 using System.IO;
+using System.Net.Http;
+using System.Text;
+using System.Text.Json;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using LocalMCPChatClient.Core;
@@ -17,6 +20,7 @@ public sealed partial class SettingsViewModel(
     IInferenceRuntimeManager runtimeManager,
     IInferenceBenchmarkService benchmarkService,
     IArtifactInstaller artifactInstaller,
+    IArtifactStore artifactStore,
     IAppPaths paths) : ObservableObject
 {
     private AppSettings _settings = new();
@@ -26,8 +30,10 @@ public sealed partial class SettingsViewModel(
     public ObservableCollection<string> ApprovalRules { get; } = [];
     public IReadOnlyList<InferenceMode> InferenceModes { get; } = Enum.GetValues<InferenceMode>();
     public IReadOnlyList<RuntimeBackend> RuntimeBackends { get; } = Enum.GetValues<RuntimeBackend>();
+    public IReadOnlyList<int> ImageTokenBudgets { get; } = [70, 140, 280, 560, 1120];
     public string DataDirectory => paths.DataDirectory;
     public string LogsDirectory => paths.LogsDirectory;
+    public string ArtifactDirectory => paths.ArtifactsDirectory;
 
     [ObservableProperty] private ModelProfile? _selectedModel;
     [ObservableProperty] private InferenceMode _inferenceMode;
@@ -37,6 +43,8 @@ public sealed partial class SettingsViewModel(
     [ObservableProperty] private double _temperature = 0.7;
     [ObservableProperty] private string? _customRuntimePath;
     [ObservableProperty] private bool _preloadModel = true;
+    [ObservableProperty] private bool _enableVision = true;
+    [ObservableProperty] private int _imageTokenBudget = 280;
     [ObservableProperty] private string _modelDirectory = string.Empty;
     [ObservableProperty] private McpServerEditorViewModel? _selectedMcpServer;
     [ObservableProperty] private string _statusText = string.Empty;
@@ -44,6 +52,9 @@ public sealed partial class SettingsViewModel(
     [ObservableProperty] private bool _isWorking;
     [ObservableProperty] private string _performanceRecommendation = string.Empty;
     [ObservableProperty] private string _benchmarkResultText = string.Empty;
+    [ObservableProperty] private string _lookDevPairingAddress = "http://127.0.0.1:8777";
+    [ObservableProperty] private string _lookDevPairingCode = string.Empty;
+    [ObservableProperty] private string _artifactStorageText = "計算中…";
 
     public async Task InitializeAsync()
     {
@@ -63,6 +74,8 @@ public sealed partial class SettingsViewModel(
         Temperature = _settings.Temperature;
         CustomRuntimePath = _settings.CustomRuntimePath;
         PreloadModel = _settings.PreloadModel;
+        EnableVision = _settings.EnableVision;
+        ImageTokenBudget = _settings.ImageTokenBudget;
         ModelDirectory = _settings.ModelDirectory ?? paths.ModelsDirectory;
         McpServers.Clear();
         foreach (var server in _settings.McpServers) McpServers.Add(new McpServerEditorViewModel(server));
@@ -73,6 +86,7 @@ public sealed partial class SettingsViewModel(
                                     InferenceMode != ToInferenceMode(hardware.RecommendedBackend)
             ? $"このPCでは{FormatBackend(hardware.RecommendedBackend)}を推奨します。Autoまたは速度診断を利用できます。"
             : hardware.Summary;
+        await RefreshArtifactStorageAsync();
         StatusText = "設定を読み込みました。";
     }
 
@@ -87,6 +101,8 @@ public sealed partial class SettingsViewModel(
             MaxOutputTokens = Math.Clamp(MaxOutputTokens, 64, 32768),
             Temperature = Math.Clamp(Temperature, 0, 2),
             PreloadModel = PreloadModel,
+            EnableVision = EnableVision,
+            ImageTokenBudget = ImageTokenBudgets.Contains(ImageTokenBudget) ? ImageTokenBudget : 280,
             CustomRuntimePath = string.IsNullOrWhiteSpace(CustomRuntimePath) ? null : Path.GetFullPath(CustomRuntimePath),
             ModelDirectory = string.IsNullOrWhiteSpace(ModelDirectory) ? paths.ModelsDirectory : Path.GetFullPath(ModelDirectory)
         });
@@ -155,6 +171,78 @@ public sealed partial class SettingsViewModel(
         var editor = new McpServerEditorViewModel(new McpServerProfile { Name = "HTTP MCP", Transport = McpTransportKind.StreamableHttp, Url = "https://" });
         McpServers.Add(editor);
         SelectedMcpServer = editor;
+    }
+
+    [RelayCommand]
+    private async Task PairLookDevAsync()
+    {
+        if (IsWorking) return;
+        IsWorking = true;
+        string? secretReference = null;
+        try
+        {
+            if (!Uri.TryCreate(LookDevPairingAddress, UriKind.Absolute, out var baseUri) ||
+                baseUri.Scheme != Uri.UriSchemeHttp || baseUri.Host is not ("127.0.0.1" or "localhost"))
+                throw new InvalidOperationException("Pairing先はhttp://127.0.0.1またはhttp://localhostに限定されます。");
+            if (LookDevPairingCode.Length != 8 || !LookDevPairingCode.All(char.IsAsciiDigit))
+                throw new InvalidOperationException("D3D12側に表示された8桁コードを入力してください。");
+
+            using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(10) };
+            var discoveryUri = new Uri(baseUri, "/.well-known/lookdevpt/v1");
+            using var discoveryResponse = await client.GetAsync(discoveryUri);
+            discoveryResponse.EnsureSuccessStatusCode();
+            using var discovery = JsonDocument.Parse(await discoveryResponse.Content.ReadAsStringAsync());
+            var endpoint = discovery.RootElement.GetProperty("endpoint").GetString()
+                ?? throw new InvalidOperationException("LookDev discoveryにendpointがありません。");
+            var contractVersion = discovery.RootElement.GetProperty("contractVersion").GetString();
+            if (string.IsNullOrWhiteSpace(contractVersion)) throw new InvalidOperationException("LookDev契約版を確認できません。");
+
+            var pairBody = JsonSerializer.Serialize(new { code = LookDevPairingCode, clientName = "LocalMCPChatClient" });
+            using var pairResponse = await client.PostAsync(new Uri(baseUri, "/pair"), new StringContent(pairBody, Encoding.UTF8, "application/json"));
+            var pairJson = await pairResponse.Content.ReadAsStringAsync();
+            if (!pairResponse.IsSuccessStatusCode) throw new InvalidOperationException($"Pairingに失敗しました ({(int)pairResponse.StatusCode}): {pairJson}");
+            using var paired = JsonDocument.Parse(pairJson);
+            var token = paired.RootElement.GetProperty("token").GetString()
+                ?? throw new InvalidOperationException("Pairing tokenが返されませんでした。");
+
+            var serverId = "lookdevpt-" + Guid.NewGuid().ToString("N");
+            secretReference = $"mcp:{serverId}:header:Authorization";
+            await secretStore.SetAsync(secretReference, "Bearer " + token);
+            var profile = new McpServerProfile
+            {
+                Id = serverId,
+                Name = "D3D12 LookDev (paired)",
+                Transport = McpTransportKind.StreamableHttp,
+                Url = endpoint,
+                Headers = [new SecretValue("Authorization", SecretRef: secretReference)],
+                EnableStandaloneGetStream = false,
+                BufferHttpRequestBody = true,
+                StartupTimeoutSeconds = 10,
+                TimeoutSeconds = 120
+            };
+            _settings = await settingsStore.UpdateAsync(settings => settings with
+            {
+                McpServers = settings.McpServers.Where(item => !item.Name.Equals(profile.Name, StringComparison.OrdinalIgnoreCase)).Append(profile).ToList()
+            });
+            // Pairing codes are one-shot. Once the profile is durable, retain its
+            // Credential Manager entry even if the immediate connection probe fails.
+            secretReference = null;
+            var previous = McpServers.FirstOrDefault(item => item.Name.Equals(profile.Name, StringComparison.OrdinalIgnoreCase));
+            if (previous is not null) McpServers.Remove(previous);
+            var editor = new McpServerEditorViewModel(profile);
+            McpServers.Add(editor);
+            SelectedMcpServer = editor;
+            var connection = await mcpManager.ConnectAsync(profile);
+            if (connection.State != McpConnectionState.Connected) throw new InvalidOperationException(connection.Error ?? "MCP接続に失敗しました。");
+            LookDevPairingCode = string.Empty;
+            StatusText = $"D3D12 LookDevとペアリングしました（契約 {connection.LookDevContractVersion ?? contractVersion}）。tokenはWindows Credential Managerに保存しました。";
+        }
+        catch (Exception exception)
+        {
+            if (secretReference is not null) await secretStore.DeleteAsync(secretReference);
+            StatusText = "LookDev pairing失敗: " + exception.Message;
+        }
+        finally { IsWorking = false; }
     }
 
     public async Task<McpProfileImportSummary> ImportMcpAsync(string filePath)
@@ -290,7 +378,18 @@ public sealed partial class SettingsViewModel(
         if (SelectedModel is null) return;
         var installedPath = await RunInstallAsync(BuiltInArtifacts.CreateModelArtifact(SelectedModel, ModelDirectory));
         if (installedPath is null) return;
-        Models[Models.IndexOf(SelectedModel)] = SelectedModel = SelectedModel with { LocalPath = installedPath };
+        string? projectorPath = SelectedModel.VisionProjectorPath;
+        var projectorArtifact = EnableVision ? BuiltInArtifacts.CreateVisionProjectorArtifact(SelectedModel, ModelDirectory) : null;
+        if (projectorArtifact is not null)
+        {
+            projectorPath = await RunInstallAsync(projectorArtifact);
+            if (projectorPath is null) return;
+        }
+        Models[Models.IndexOf(SelectedModel)] = SelectedModel = SelectedModel with
+        {
+            LocalPath = installedPath,
+            VisionProjectorPath = projectorPath
+        };
         _settings = await settingsStore.UpdateAsync(settings => settings with
         {
             SelectedModelId = SelectedModel.Id,
@@ -333,7 +432,14 @@ public sealed partial class SettingsViewModel(
     public async Task ClearHistoryAsync()
     {
         await conversationStore.DeleteAllAsync();
+        await RefreshArtifactStorageAsync();
         StatusText = "チャット履歴をすべて削除しました。";
+    }
+
+    private async Task RefreshArtifactStorageAsync()
+    {
+        var bytes = await artifactStore.GetStoredByteCountAsync();
+        ArtifactStorageText = $"{bytes / 1024d / 1024d:N1} MiB / 2,048 MiB";
     }
 
     public async Task ResetSettingsAsync()

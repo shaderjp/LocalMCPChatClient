@@ -4,7 +4,7 @@ using Microsoft.Data.Sqlite;
 
 namespace LocalMCPChatClient.Infrastructure;
 
-public sealed class SqliteConversationStore(IAppPaths paths) : IConversationStore
+public sealed class SqliteConversationStore(IAppPaths paths, IArtifactStore? artifactStore = null) : IConversationStore
 {
     private readonly SemaphoreSlim _initializeGate = new(1, 1);
     private bool _initialized;
@@ -40,6 +40,7 @@ public sealed class SqliteConversationStore(IAppPaths paths) : IConversationStor
                     tool_name TEXT NULL,
                     tool_calls_json TEXT NULL,
                     is_error INTEGER NOT NULL DEFAULT 0,
+                    content_parts_json TEXT NULL,
                     FOREIGN KEY(conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
                 );
                 CREATE INDEX IF NOT EXISTS ix_messages_conversation_created
@@ -49,15 +50,25 @@ public sealed class SqliteConversationStore(IAppPaths paths) : IConversationStor
             var columns = connection.CreateCommand();
             columns.CommandText = "PRAGMA table_info(messages)";
             var hasResourceSnapshots = false;
+            var hasContentParts = false;
             await using (var reader = await columns.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false))
             {
                 while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+                {
                     hasResourceSnapshots |= reader.GetString(1).Equals("resource_snapshots_json", StringComparison.OrdinalIgnoreCase);
+                    hasContentParts |= reader.GetString(1).Equals("content_parts_json", StringComparison.OrdinalIgnoreCase);
+                }
             }
             if (!hasResourceSnapshots)
             {
                 var migration = connection.CreateCommand();
                 migration.CommandText = "ALTER TABLE messages ADD COLUMN resource_snapshots_json TEXT NULL";
+                await migration.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+            }
+            if (!hasContentParts)
+            {
+                var migration = connection.CreateCommand();
+                migration.CommandText = "ALTER TABLE messages ADD COLUMN content_parts_json TEXT NULL";
                 await migration.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
             }
             _initialized = true;
@@ -122,7 +133,7 @@ public sealed class SqliteConversationStore(IAppPaths paths) : IConversationStor
         await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
         var command = connection.CreateCommand();
         command.CommandText = """
-            SELECT id, conversation_id, role, content, created_at, tool_call_id, tool_name, tool_calls_json, is_error, resource_snapshots_json
+            SELECT id, conversation_id, role, content, created_at, tool_call_id, tool_name, tool_calls_json, is_error, resource_snapshots_json, content_parts_json
             FROM messages WHERE conversation_id = $conversation ORDER BY created_at, rowid
             """;
         command.Parameters.AddWithValue("$conversation", conversationId.ToString("D"));
@@ -134,7 +145,8 @@ public sealed class SqliteConversationStore(IAppPaths paths) : IConversationStor
                 reader.GetString(3), DateTimeOffset.Parse(reader.GetString(4)),
                 reader.IsDBNull(5) ? null : reader.GetString(5), reader.IsDBNull(6) ? null : reader.GetString(6),
                 reader.IsDBNull(7) ? null : reader.GetString(7), reader.GetInt32(8) != 0,
-                reader.IsDBNull(9) ? null : JsonSerializer.Deserialize<List<McpResourceSnapshot>>(reader.GetString(9))));
+                reader.IsDBNull(9) ? null : JsonSerializer.Deserialize<List<McpResourceSnapshot>>(reader.GetString(9)),
+                reader.IsDBNull(10) ? null : JsonSerializer.Deserialize<List<McpContentPart>>(reader.GetString(10))));
         }
         return result;
     }
@@ -148,8 +160,8 @@ public sealed class SqliteConversationStore(IAppPaths paths) : IConversationStor
         var command = connection.CreateCommand();
         command.Transaction = (SqliteTransaction)transaction;
         command.CommandText = """
-            INSERT INTO messages(id,conversation_id,role,content,created_at,tool_call_id,tool_name,tool_calls_json,is_error,resource_snapshots_json)
-            VALUES($id,$conversation,$role,$content,$created,$call,$tool,$calls,$error,$resources);
+            INSERT INTO messages(id,conversation_id,role,content,created_at,tool_call_id,tool_name,tool_calls_json,is_error,resource_snapshots_json,content_parts_json)
+            VALUES($id,$conversation,$role,$content,$created,$call,$tool,$calls,$error,$resources,$parts);
             UPDATE conversations SET updated_at=$updated WHERE id=$conversation;
             """;
         command.Parameters.AddWithValue("$id", message.Id.ToString("D"));
@@ -163,6 +175,9 @@ public sealed class SqliteConversationStore(IAppPaths paths) : IConversationStor
         command.Parameters.AddWithValue("$error", message.IsError ? 1 : 0);
         command.Parameters.AddWithValue("$resources", message.ResourceSnapshots is { Count: > 0 }
             ? JsonSerializer.Serialize(message.ResourceSnapshots)
+            : DBNull.Value);
+        command.Parameters.AddWithValue("$parts", message.ContentParts is { Count: > 0 }
+            ? JsonSerializer.Serialize(message.ContentParts)
             : DBNull.Value);
         command.Parameters.AddWithValue("$updated", DateTimeOffset.UtcNow.ToString("O"));
         await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
@@ -212,7 +227,10 @@ public sealed class SqliteConversationStore(IAppPaths paths) : IConversationStor
         => await ExecuteAsync("UPDATE conversations SET title=$value, updated_at=$updated WHERE id=$id", conversationId, title.Trim(), cancellationToken).ConfigureAwait(false);
 
     public async Task DeleteAsync(Guid conversationId, CancellationToken cancellationToken = default)
-        => await ExecuteAsync("DELETE FROM conversations WHERE id=$id", conversationId, null, cancellationToken).ConfigureAwait(false);
+    {
+        await ExecuteAsync("DELETE FROM conversations WHERE id=$id", conversationId, null, cancellationToken).ConfigureAwait(false);
+        await CollectArtifactGarbageAsync(cancellationToken).ConfigureAwait(false);
+    }
 
     public async Task DeleteAllAsync(CancellationToken cancellationToken = default)
     {
@@ -222,6 +240,8 @@ public sealed class SqliteConversationStore(IAppPaths paths) : IConversationStor
         var command = connection.CreateCommand();
         command.CommandText = "DELETE FROM conversations";
         await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+        if (artifactStore is not null)
+            await artifactStore.CollectGarbageAsync(new HashSet<string>(StringComparer.OrdinalIgnoreCase), cancellationToken).ConfigureAwait(false);
     }
 
     private async Task ExecuteAsync(string sql, Guid id, string? value, CancellationToken cancellationToken)
@@ -235,6 +255,46 @@ public sealed class SqliteConversationStore(IAppPaths paths) : IConversationStor
         if (value is not null) command.Parameters.AddWithValue("$value", value);
         if (sql.Contains("$updated", StringComparison.Ordinal)) command.Parameters.AddWithValue("$updated", DateTimeOffset.UtcNow.ToString("O"));
         await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task CollectArtifactGarbageAsync(CancellationToken cancellationToken)
+    {
+        if (artifactStore is null) return;
+        var references = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        await using var connection = CreateConnection();
+        await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
+        var command = connection.CreateCommand();
+        command.CommandText = "SELECT resource_snapshots_json, content_parts_json FROM messages WHERE resource_snapshots_json IS NOT NULL OR content_parts_json IS NOT NULL";
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+        while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+        {
+            for (var column = 0; column < 2; column++)
+            {
+                if (reader.IsDBNull(column)) continue;
+                try
+                {
+                    using var document = JsonDocument.Parse(reader.GetString(column));
+                    CollectHashes(document.RootElement, references);
+                }
+                catch (JsonException) { }
+            }
+        }
+        await artifactStore.CollectGarbageAsync(references, cancellationToken).ConfigureAwait(false);
+    }
+
+    private static void CollectHashes(JsonElement element, ISet<string> references)
+    {
+        if (element.ValueKind == JsonValueKind.Object)
+        {
+            foreach (var property in element.EnumerateObject())
+            {
+                if (property.Name.Equals("sha256", StringComparison.OrdinalIgnoreCase) && property.Value.ValueKind == JsonValueKind.String && property.Value.GetString() is { Length: 64 } hash)
+                    references.Add(hash);
+                else CollectHashes(property.Value, references);
+            }
+        }
+        else if (element.ValueKind == JsonValueKind.Array)
+            foreach (var child in element.EnumerateArray()) CollectHashes(child, references);
     }
 
     private SqliteConnection CreateConnection() => new($"Data Source={paths.DatabasePath};Mode=ReadWriteCreate;Cache=Shared;Foreign Keys=True");

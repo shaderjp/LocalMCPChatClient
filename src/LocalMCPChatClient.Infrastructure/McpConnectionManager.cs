@@ -12,14 +12,17 @@ namespace LocalMCPChatClient.Infrastructure;
 public sealed class McpConnectionManager(
     ISecretStore secretStore,
     ILoggerFactory loggerFactory,
-    ILogger<McpConnectionManager> logger) : IMcpConnectionManager
+    ILogger<McpConnectionManager> logger,
+    IArtifactStore? artifactStore = null) : IMcpConnectionManager
 {
     private const string ProtocolVersionHeaderName = "MCP-Protocol-Version";
     private const int MaxToolResultCharacters = 256 * 1024;
     private const int MaxResourceBytes = 256 * 1024;
+    private const int MaxImagesPerToolCall = 8;
     private readonly ConcurrentDictionary<string, Connection> _connections = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<string, RegisteredTool> _tools = new(StringComparer.Ordinal);
     public event EventHandler<McpConnectionInfo>? ConnectionChanged;
+    public event EventHandler<McpResourceReference>? ResourceChanged;
 
     public async Task<McpConnectionInfo> ConnectAsync(McpServerProfile profile, CancellationToken cancellationToken = default)
     {
@@ -135,6 +138,67 @@ public sealed class McpConnectionManager(
         return catalogs;
     }
 
+    public async Task<IReadOnlyList<McpResourceTemplateDefinition>> GetResourceTemplatesAsync(CancellationToken cancellationToken = default)
+    {
+        var result = new List<McpResourceTemplateDefinition>();
+        foreach (var connection in _connections.Values.OrderBy(item => item.Profile.Name, StringComparer.CurrentCultureIgnoreCase))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (!connection.SupportsResources) continue;
+            using var timeout = CreateTimeout(connection, cancellationToken);
+            var templates = await connection.Client.ListResourceTemplatesAsync(cancellationToken: timeout.Token).ConfigureAwait(false);
+            result.AddRange(templates.Select(template => new McpResourceTemplateDefinition(
+                connection.Profile.Id,
+                connection.Profile.Name,
+                template.UriTemplate,
+                template.Title ?? template.Name,
+                template.Description,
+                template.MimeType)));
+        }
+        return result;
+    }
+
+    public async Task<IReadOnlyList<McpPromptDefinition>> GetPromptsAsync(CancellationToken cancellationToken = default)
+    {
+        var result = new List<McpPromptDefinition>();
+        foreach (var connection in _connections.Values.OrderBy(item => item.Profile.Name, StringComparer.CurrentCultureIgnoreCase))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (!connection.SupportsPrompts) continue;
+            using var timeout = CreateTimeout(connection, cancellationToken);
+            var prompts = await connection.Client.ListPromptsAsync(cancellationToken: timeout.Token).ConfigureAwait(false);
+            result.AddRange(prompts.Select(prompt => new McpPromptDefinition(
+                connection.Profile.Id,
+                connection.Profile.Name,
+                prompt.Name,
+                prompt.Title,
+                prompt.Description,
+                (prompt.ProtocolPrompt.Arguments ?? []).Select(argument => new McpPromptArgument(
+                    argument.Name, argument.Description, argument.Required == true)).ToList())));
+        }
+        return result;
+    }
+
+    public async Task<McpPromptResult> GetPromptAsync(
+        string serverId,
+        string promptName,
+        IReadOnlyDictionary<string, object?> arguments,
+        CancellationToken cancellationToken = default)
+    {
+        if (!_connections.TryGetValue(serverId, out var connection))
+            throw new InvalidOperationException("MCPサーバーは切断されています。");
+        if (!connection.SupportsPrompts) throw new InvalidOperationException("このMCPサーバーはPromptに対応していません。");
+        using var timeout = CreateTimeout(connection, cancellationToken);
+        var result = await connection.Client.GetPromptAsync(promptName, arguments, cancellationToken: timeout.Token).ConfigureAwait(false);
+        var parts = new List<McpContentPart>();
+        foreach (var message in result.Messages)
+        {
+            parts.Add(new McpContentPart(McpContentKind.Text, $"[{message.Role}]"));
+            parts.AddRange(await ConvertContentBlockAsync(message.Content, connection.Profile.Name, timeout.Token).ConfigureAwait(false));
+        }
+        return new McpPromptResult(serverId, connection.Profile.Name, promptName, result.Description, parts);
+    }
+
     public async Task<McpResourceSnapshot> ReadResourceAsync(McpResourceReference reference, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(reference);
@@ -148,22 +212,41 @@ public sealed class McpConnectionManager(
         try
         {
             var result = await connection.Client.ReadResourceAsync(reference.Uri, cancellationToken: timeout.Token).ConfigureAwait(false);
-            var textParts = result.Contents.OfType<TextResourceContents>()
-                .Select(item => item.Text)
-                .Where(item => !string.IsNullOrEmpty(item))
-                .ToList();
-            var skippedBinaryParts = result.Contents.Count(item => item is BlobResourceContents);
-            if (textParts.Count == 0)
+            var parts = new List<McpContentPart>();
+            var textParts = new List<string>();
+            var skippedBinaryParts = 0;
+            var binaryBytes = 0;
+            foreach (var item in result.Contents)
             {
-                if (skippedBinaryParts > 0)
-                    throw new NotSupportedException("このResourceはバイナリ内容だけを返すため、v1では添付できません。");
-                throw new InvalidOperationException("このResourceはテキスト内容を返しませんでした。");
+                if (item is TextResourceContents text && !string.IsNullOrEmpty(text.Text))
+                {
+                    textParts.Add(text.Text);
+                    parts.Add(new McpContentPart(
+                        IsJsonMime(text.MimeType) ? McpContentKind.StructuredJson : McpContentKind.Text,
+                        text.Text, text.MimeType, text.Uri));
+                }
+                else if (item is BlobResourceContents blob)
+                {
+                    binaryBytes += blob.DecodedData.Length;
+                    if (artifactStore is null) { skippedBinaryParts++; continue; }
+                    var mimeType = blob.MimeType ?? reference.MimeType ?? "application/octet-stream";
+                    var artifact = await artifactStore.StoreAsync(blob.DecodedData, mimeType, reference.Name, blob.Uri, timeout.Token).ConfigureAwait(false);
+                    parts.Add(new McpContentPart(
+                        mimeType.StartsWith("image/", StringComparison.OrdinalIgnoreCase) ? McpContentKind.Image : McpContentKind.Blob,
+                        MimeType: mimeType, Uri: blob.Uri, Name: reference.Name, Artifact: artifact));
+                }
             }
+            if (parts.Count == 0 && skippedBinaryParts > 0)
+                throw new NotSupportedException("バイナリResourceを保存するartifactストアが構成されていません。");
+            if (parts.Count == 0) throw new InvalidOperationException("このResourceは利用可能な内容を返しませんでした。");
 
             var content = string.Join(Environment.NewLine + Environment.NewLine, textParts);
-            var originalByteCount = Encoding.UTF8.GetByteCount(content);
+            var originalByteCount = Encoding.UTF8.GetByteCount(content) + binaryBytes;
             var truncated = originalByteCount > MaxResourceBytes;
-            if (truncated) content = ResourceSnapshotBudget.TruncateUtf8(content, MaxResourceBytes);
+            if (Encoding.UTF8.GetByteCount(content) > MaxResourceBytes)
+                content = ResourceSnapshotBudget.TruncateUtf8(content, MaxResourceBytes);
+            if (string.IsNullOrWhiteSpace(content) && parts.Any(part => part.Kind == McpContentKind.Image))
+                content = "(画像Resource)";
             return new McpResourceSnapshot(
                 reference.ServerId,
                 connection.Profile.Name,
@@ -174,7 +257,8 @@ public sealed class McpConnectionManager(
                 DateTimeOffset.UtcNow,
                 originalByteCount,
                 truncated,
-                skippedBinaryParts);
+                skippedBinaryParts,
+                parts);
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
@@ -186,6 +270,24 @@ public sealed class McpConnectionManager(
                 reference.ServerId, exception.GetType().Name);
             throw new InvalidOperationException($"Resource '{reference.Name}' を読み取れませんでした: {exception.Message}", exception);
         }
+    }
+
+    public async Task<IAsyncDisposable> SubscribeToResourceAsync(
+        McpResourceReference reference,
+        CancellationToken cancellationToken = default)
+    {
+        if (!_connections.TryGetValue(reference.ServerId, out var connection))
+            throw new InvalidOperationException("MCPサーバーは切断されています。");
+        if (!connection.SupportsSubscriptions)
+            throw new NotSupportedException("このMCPサーバーはResource購読に対応していません。");
+        return await connection.Client.SubscribeToResourceAsync(
+            reference.Uri,
+            (_, _) =>
+            {
+                ResourceChanged?.Invoke(this, reference);
+                return ValueTask.CompletedTask;
+            },
+            cancellationToken: cancellationToken).ConfigureAwait(false);
     }
 
     public Task<IReadOnlyList<ToolDefinition>> GetToolsAsync(CancellationToken cancellationToken = default)
@@ -222,10 +324,11 @@ public sealed class McpConnectionManager(
         try
         {
             var result = await registered.Tool.CallAsync(arguments, cancellationToken: timeout.Token).ConfigureAwait(false);
-            var content = FormatResult(result);
+            var parts = await ConvertToolResultAsync(result, registered.Connection.Profile.Name, timeout.Token).ConfigureAwait(false);
+            var content = FormatResult(parts);
             var truncated = content.Length > MaxToolResultCharacters;
             if (truncated) content = content[..MaxToolResultCharacters] + "\n…(結果を256 KiBで切り詰めました)";
-            return new McpToolResult(request.Id, request.Name, content, result.IsError == true, truncated);
+            return new McpToolResult(request.Id, request.Name, content, result.IsError == true, truncated, parts);
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
@@ -265,7 +368,8 @@ public sealed class McpConnectionManager(
             IList<McpClientTool> tools = client.ServerCapabilities.Tools is null
                 ? []
                 : await client.ListToolsAsync(cancellationToken: timeout.Token).ConfigureAwait(false);
-            return new Connection(profile, client, tools);
+            var lookDevContractVersion = await ResolveLookDevContractVersionAsync(profile, client, timeout.Token).ConfigureAwait(false);
+            return new Connection(profile, client, tools, lookDevContractVersion);
         }
         catch
         {
@@ -346,6 +450,49 @@ public sealed class McpConnectionManager(
         return protocolVersion;
     }
 
+    private static async Task<string?> ResolveLookDevContractVersionAsync(
+        McpServerProfile profile,
+        McpClient client,
+        CancellationToken cancellationToken)
+    {
+        var fromInitialize = ReadLookDevContractVersion(client.ServerCapabilities.Experimental);
+        if (!string.IsNullOrWhiteSpace(fromInitialize)) return fromInitialize;
+        if (profile.Transport != McpTransportKind.StreamableHttp ||
+            !Uri.TryCreate(profile.Url, UriKind.Absolute, out var endpoint) || !endpoint.IsLoopback)
+            return null;
+
+        // Some MCP SDK versions do not preserve experimental capabilities from
+        // the 2026 server/discover response. The LookDev well-known document is
+        // an explicit, tool-name-independent fallback for this local contract.
+        try
+        {
+            using var clientForDiscovery = new HttpClient { Timeout = Timeout.InfiniteTimeSpan };
+            using var response = await clientForDiscovery.GetAsync(
+                new Uri(endpoint, "/.well-known/lookdevpt/v1"), cancellationToken).ConfigureAwait(false);
+            if (!response.IsSuccessStatusCode) return null;
+            await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
+            using var document = await JsonDocument.ParseAsync(stream, cancellationToken: cancellationToken).ConfigureAwait(false);
+            return document.RootElement.TryGetProperty("contractVersion", out var version) && version.ValueKind == JsonValueKind.String
+                ? version.GetString()
+                : null;
+        }
+        catch (HttpRequestException) { return null; }
+        catch (JsonException) { return null; }
+    }
+
+    private static string? ReadLookDevContractVersion(object? experimental)
+    {
+        if (experimental is null) return null;
+        try
+        {
+            using var document = JsonDocument.Parse(JsonSerializer.Serialize(experimental));
+            if (!document.RootElement.TryGetProperty("lookdevpt", out var lookdev) ||
+                !lookdev.TryGetProperty("contractVersion", out var version)) return null;
+            return version.GetString();
+        }
+        catch (JsonException) { return null; }
+    }
+
     private static bool IsProtocolVersionHeader(string name)
         => string.Equals(name.Trim(), ProtocolVersionHeaderName, StringComparison.OrdinalIgnoreCase);
 
@@ -388,16 +535,81 @@ public sealed class McpConnectionManager(
         return clean[..Math.Min(clean.Length, prefixLength)] + "_" + hash;
     }
 
-    private static string FormatResult(CallToolResult result)
+    private async Task<IReadOnlyList<McpContentPart>> ConvertToolResultAsync(
+        CallToolResult result,
+        string serverName,
+        CancellationToken cancellationToken)
     {
-        var parts = result.Content.Select(content => content switch
+        var parts = new List<McpContentPart>();
+        foreach (var content in result.Content)
         {
-            TextContentBlock text => text.Text,
-            _ => JsonSerializer.Serialize(content)
-        }).Where(value => !string.IsNullOrWhiteSpace(value)).ToList();
+            parts.AddRange(await ConvertContentBlockAsync(content, serverName, cancellationToken).ConfigureAwait(false));
+            if (parts.Count(part => part.Kind == McpContentKind.Image) > MaxImagesPerToolCall)
+                throw new InvalidDataException($"Tool result exceeds the {MaxImagesPerToolCall}-image limit.");
+        }
         if (result.StructuredContent is not null)
-            parts.Add(JsonSerializer.Serialize(result.StructuredContent));
-        return parts.Count == 0 ? "(ツールは空の結果を返しました)" : string.Join(Environment.NewLine, parts);
+            parts.Add(new McpContentPart(McpContentKind.StructuredJson, JsonSerializer.Serialize(result.StructuredContent), "application/json"));
+        return parts;
+    }
+
+    private async Task<IReadOnlyList<McpContentPart>> ConvertContentBlockAsync(
+        ContentBlock content,
+        string serverName,
+        CancellationToken cancellationToken)
+    {
+        switch (content)
+        {
+            case TextContentBlock text:
+                return [new McpContentPart(McpContentKind.Text, text.Text)];
+            case ImageContentBlock image:
+            {
+                if (artifactStore is null) return [new McpContentPart(McpContentKind.Image, "(画像は保存できませんでした)", image.MimeType)];
+                var artifact = await artifactStore.StoreAsync(
+                    image.DecodedData, image.MimeType, serverName + " image", cancellationToken: cancellationToken).ConfigureAwait(false);
+                return [new McpContentPart(McpContentKind.Image, MimeType: image.MimeType, Name: artifact.DisplayName, Artifact: artifact)];
+            }
+            case ResourceLinkBlock link:
+                return [new McpContentPart(McpContentKind.ResourceLink, link.Description, link.MimeType, link.Uri, link.Title ?? link.Name)];
+            case EmbeddedResourceBlock embedded when embedded.Resource is TextResourceContents textResource:
+                return [new McpContentPart(
+                    IsJsonMime(textResource.MimeType) ? McpContentKind.StructuredJson : McpContentKind.EmbeddedResource,
+                    textResource.Text, textResource.MimeType, textResource.Uri)];
+            case EmbeddedResourceBlock embedded when embedded.Resource is BlobResourceContents blob:
+            {
+                if (artifactStore is null) return [new McpContentPart(McpContentKind.Blob, "(バイナリResourceは保存できませんでした)", blob.MimeType, blob.Uri)];
+                var mimeType = blob.MimeType ?? "application/octet-stream";
+                var artifact = await artifactStore.StoreAsync(blob.DecodedData, mimeType, serverName + " resource", blob.Uri, cancellationToken).ConfigureAwait(false);
+                return [new McpContentPart(
+                    mimeType.StartsWith("image/", StringComparison.OrdinalIgnoreCase) ? McpContentKind.Image : McpContentKind.EmbeddedResource,
+                    MimeType: mimeType, Uri: blob.Uri, Name: artifact.DisplayName, Artifact: artifact)];
+            }
+            default:
+                return [new McpContentPart(McpContentKind.Text, JsonSerializer.Serialize(content))];
+        }
+    }
+
+    private static string FormatResult(IReadOnlyList<McpContentPart> parts)
+    {
+        var text = parts.Select(part => part.Kind switch
+        {
+            McpContentKind.Text or McpContentKind.StructuredJson or McpContentKind.EmbeddedResource => part.Text,
+            McpContentKind.Image => $"[image: {part.Name ?? part.Artifact?.DisplayName ?? part.MimeType}]",
+            McpContentKind.ResourceLink => $"[resource: {part.Name ?? part.Uri}] {part.Uri}",
+            McpContentKind.Blob => $"[binary: {part.Name ?? part.MimeType}]",
+            _ => part.Text
+        }).Where(value => !string.IsNullOrWhiteSpace(value));
+        var value = string.Join(Environment.NewLine, text);
+        return string.IsNullOrWhiteSpace(value) ? "(ツールは空の結果を返しました)" : value;
+    }
+
+    private static bool IsJsonMime(string? mimeType)
+        => mimeType?.Contains("json", StringComparison.OrdinalIgnoreCase) == true;
+
+    private static CancellationTokenSource CreateTimeout(Connection connection, CancellationToken cancellationToken)
+    {
+        var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeout.CancelAfter(TimeSpan.FromSeconds(Math.Clamp(connection.Profile.TimeoutSeconds, 1, 3600)));
+        return timeout;
     }
 
     private void Publish(McpConnectionInfo info) => ConnectionChanged?.Invoke(this, info);
@@ -427,14 +639,25 @@ public sealed class McpConnectionManager(
         connection.Profile.Name,
         McpConnectionState.Connected,
         ToolCount: connection.Tools.Count,
-        SupportsResources: connection.SupportsResources);
+        SupportsResources: connection.SupportsResources,
+        SupportsPrompts: connection.SupportsPrompts,
+        SupportsResourceTemplates: connection.SupportsResources,
+        SupportsSubscriptions: connection.SupportsSubscriptions,
+        LookDevContractVersion: connection.LookDevContractVersion);
 
-    private sealed class Connection(McpServerProfile profile, McpClient client, IList<McpClientTool> tools) : IAsyncDisposable
+    private sealed class Connection(
+        McpServerProfile profile,
+        McpClient client,
+        IList<McpClientTool> tools,
+        string? lookDevContractVersion) : IAsyncDisposable
     {
         public McpServerProfile Profile { get; } = profile;
         public McpClient Client { get; } = client;
         public IList<McpClientTool> Tools { get; } = tools;
         public bool SupportsResources => Client.ServerCapabilities.Resources is not null;
+        public bool SupportsPrompts => Client.ServerCapabilities.Prompts is not null;
+        public bool SupportsSubscriptions => Client.ServerCapabilities.Resources?.Subscribe == true;
+        public string? LookDevContractVersion { get; } = lookDevContractVersion;
         public ValueTask DisposeAsync() => Client.DisposeAsync();
     }
 }

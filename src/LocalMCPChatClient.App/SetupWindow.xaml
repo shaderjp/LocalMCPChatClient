@@ -17,6 +17,7 @@
                 <ComboBox ItemsSource="{Binding Models}" SelectedItem="{Binding SelectedModel}" DisplayMemberPath="DisplayName" Margin="0,5,0,15" />
                 <TextBlock Text="推論バックエンド" FontWeight="Bold" />
                 <ComboBox ItemsSource="{Binding Backends}" SelectedItem="{Binding SelectedBackend}" Margin="0,5,0,15" />
+                <CheckBox Content="画像入力を有効化（Gemma 4 vision projectorを追加取得）" IsChecked="{Binding EnableVision}" Margin="3,0,0,8" />
                 <CheckBox IsChecked="{Binding AcceptLicense}" Margin="3,6,0,16">
                     <TextBlock TextWrapping="Wrap">Gemma 4のApache 2.0ライセンスと、llama.cppのライセンスを確認して同意します。</TextBlock>
                 </CheckBox>

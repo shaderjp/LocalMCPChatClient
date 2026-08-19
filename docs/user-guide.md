@@ -93,6 +93,8 @@ Tool Callカードには名前空間化されたツール名、検証済みJSON�
 | コンテキスト長 | 8192 | 会話履歴とツール定義を含めてモデルへ渡す最大コンテキスト |
 | 最大出力トークン | 2048 | 1回の推論で生成する上限 |
 | Temperature | 0.7 | 低いほど出力が安定し、高いほど変化しやすい |
+| 画像入力 | オン | 対応model/projectorで画像をGemmaへ渡す |
+| 画像トークン予算 | 280 | 70 / 140 / 280 / 560 / 1120から選択 |
 
 コンテキスト長を大きくすると、特にGPU推論時のメモリ使用量が増えます。
 
@@ -126,10 +128,11 @@ Resourceは次の1回の送信だけに添付されます。送信時にすべ�
 
 制限事項:
 
-- 対応する本文は`TextResourceContents`だけです。BlobだけのResourceは添付できません。
-- テキストとBlobが混在する場合はテキストだけを使用し、バイナリの省略を表示します。
-- 1 Resourceは最大256 KiBです。さらに、全添付は設定したコンテキスト長の25%を上限として均等に切り詰められます。
-- Resource Templates、引数補完、変更購読、自動再読込、MCP Promptsには未対応です。
+- Text、structured JSON、Image、Blob、Resource Link、Embedded Resourceを共通content-partとして扱います。PNGなどの画像はカードでサムネイル、拡大、保存、URI、生成元を確認できます。
+- text Resourceは1件最大256 KiBです。さらに、全text添付は設定したコンテキスト長の25%を上限として均等に切り詰められます。
+- binary artifactは1画像16 MiB、1 tool call最大8画像、1ターン64 MiB、decode後64メガピクセルまでです。推論には最大辺2048 pxの派生画像を使用し、原本を維持します。
+- artifactは`%LocalAppData%\LocalMCPChatClient\Artifacts`へSHA-256単位で保存し、既定上限は2 GiBです。超過時は履歴を自動削除せず、新規artifact保存を停止します。
+- Resource TemplatesはURIを展開して添付でき、MCP Promptsは展開結果をプレビューしてから会話へ投入できます。対応Resourceの変更購読は対象カードまたはLookDevレビューの表示中だけ維持されます。
 - Resource本文は信頼できない外部データとしてモデルへ渡されます。添付前にプレビュー内容と接続先を確認してください。
 
 ## MCP設定JSONのインポート
