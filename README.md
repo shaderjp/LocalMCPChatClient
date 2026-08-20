@@ -2,7 +2,10 @@
 
 Gemma 4 E2B/E4Bをローカルで実行し、MCPツールを人間の承認付きで利用できるWindows向けチャットクライアントです。モデル推論、会話履歴、MCP設定は端末内に保存され、アプリからテレメトリやクラウドLLMへの送信は行いません。
 
-現在のバージョンは`0.1.2`です。変更内容は[CHANGELOG](CHANGELOG.md)を参照してください。
+現在のバージョンは公開ベータ`0.2.0-beta.1`です。変更内容は[CHANGELOG](CHANGELOG.md)を参照してください。
+
+> [!WARNING]
+> `0.2.0-beta.1`はコード署名されていません。統合版はD3D12LookDevPTWinUIのGitHub Pre-releaseで配布するSuite ZIPを正本とし、同梱のSHA-256を照合してください。Windows SmartScreenが警告を表示する場合があります。
 
 > [!IMPORTANT]
 > `0.1.1`は配布物のライセンス表示を修正したリリースです。`0.1.0`の配布物では第三者ライセンス通知を確認できないため、`0.1.1`以降を使用してください。
@@ -47,8 +50,8 @@ GitHub Releaseでは次の2形式を配布します。どちらも.NETランタ�
 
 | 成果物 | 用途 |
 |---|---|
-| `LocalMCPChatClient-0.1.2-win-x64.zip` | 展開して使う通常のPortable版。構成ファイルを確認しやすい |
-| `LocalMCPChatClient-0.1.2-win-x64.exe` | アプリ本体を1ファイルにまとめたself-contained版 |
+| `LocalMCPChatClient-0.2.0-beta.1-win-x64.zip` | 展開して使う通常のPortable版。構成ファイルを確認しやすい |
+| `LocalMCPChatClient-0.2.0-beta.1-win-x64.exe` | アプリ本体を1ファイルにまとめたself-contained版 |
 
 SHA-256ファイルも各成果物と一緒に配布します。単体EXEにはモデルと`llama-server`は含まれず、ネイティブ依存関係は実行時に一時ディレクトリへ展開される場合があります。
 
@@ -59,11 +62,12 @@ Portable ZIPを使う場合は任意の書き込み可能なフォルダーへ�
 初回セットアップでは次を行います。
 
 1. 検出されたハードウェアを確認する
-2. Gemma 4 E2BまたはE4Bを選択する
-3. CPU / CUDA / Vulkanバックエンドを選択する
-4. 画像入力（既定オン）を選び、Gemma 4 vision projectorを取得する
-5. 各コンポーネントのライセンスを確認する
-6. 「ダウンロードして開始」を選択する
+2. Suite版ではD3D12 LookDevのMCPパネルに表示された8桁コードでペアリングする
+3. Gemma 4 E2BまたはE4Bを選択する
+4. CPU / CUDA / Vulkanバックエンドを選択する
+5. 画像入力（既定オン）を選び、Gemma 4 vision projectorを取得する
+6. 各コンポーネントのライセンスを確認して「ダウンロードして開始」を選択する
+7. Suite初回起動ではquick reviewが自動実行され、画像入力経路を確認する
 
 モデルと`llama-server`を既に持っている場合は「既存ファイルを使用」から登録できます。詳しい手順は[はじめに](docs/getting-started.md)を参照してください。
 

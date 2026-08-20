@@ -16,11 +16,13 @@ public sealed partial class SettingsViewModel(
     IConversationStore conversationStore,
     IToolApprovalService approvalService,
     IMcpConnectionManager mcpManager,
+    ILookDevPairingService lookDevPairingService,
     IMcpProfileImporter mcpProfileImporter,
     IInferenceRuntimeManager runtimeManager,
     IInferenceBenchmarkService benchmarkService,
     IArtifactInstaller artifactInstaller,
     IArtifactStore artifactStore,
+    IDiagnosticReportService diagnosticReportService,
     IAppPaths paths) : ObservableObject
 {
     private AppSettings _settings = new();
@@ -158,6 +160,23 @@ public sealed partial class SettingsViewModel(
     }
 
     [RelayCommand]
+    private async Task ExportDiagnosticsAsync()
+    {
+        if (IsWorking) return;
+        IsWorking = true;
+        try
+        {
+            var path = await diagnosticReportService.ExportAsync();
+            StatusText = "秘密情報を除外した診断JSONを作成しました: " + path;
+        }
+        catch (Exception exception)
+        {
+            StatusText = "診断JSONを作成できませんでした: " + exception.Message;
+        }
+        finally { IsWorking = false; }
+    }
+
+    [RelayCommand]
     private void AddStdio()
     {
         var editor = new McpServerEditorViewModel(new McpServerProfile { Name = "Local MCP", Transport = McpTransportKind.Stdio });
@@ -178,68 +197,20 @@ public sealed partial class SettingsViewModel(
     {
         if (IsWorking) return;
         IsWorking = true;
-        string? secretReference = null;
         try
         {
-            if (!Uri.TryCreate(LookDevPairingAddress, UriKind.Absolute, out var baseUri) ||
-                baseUri.Scheme != Uri.UriSchemeHttp || baseUri.Host is not ("127.0.0.1" or "localhost"))
-                throw new InvalidOperationException("Pairing先はhttp://127.0.0.1またはhttp://localhostに限定されます。");
-            if (LookDevPairingCode.Length != 8 || !LookDevPairingCode.All(char.IsAsciiDigit))
-                throw new InvalidOperationException("D3D12側に表示された8桁コードを入力してください。");
-
-            using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(10) };
-            var discoveryUri = new Uri(baseUri, "/.well-known/lookdevpt/v1");
-            using var discoveryResponse = await client.GetAsync(discoveryUri);
-            discoveryResponse.EnsureSuccessStatusCode();
-            using var discovery = JsonDocument.Parse(await discoveryResponse.Content.ReadAsStringAsync());
-            var endpoint = discovery.RootElement.GetProperty("endpoint").GetString()
-                ?? throw new InvalidOperationException("LookDev discoveryにendpointがありません。");
-            var contractVersion = discovery.RootElement.GetProperty("contractVersion").GetString();
-            if (string.IsNullOrWhiteSpace(contractVersion)) throw new InvalidOperationException("LookDev契約版を確認できません。");
-
-            var pairBody = JsonSerializer.Serialize(new { code = LookDevPairingCode, clientName = "LocalMCPChatClient" });
-            using var pairResponse = await client.PostAsync(new Uri(baseUri, "/pair"), new StringContent(pairBody, Encoding.UTF8, "application/json"));
-            var pairJson = await pairResponse.Content.ReadAsStringAsync();
-            if (!pairResponse.IsSuccessStatusCode) throw new InvalidOperationException($"Pairingに失敗しました ({(int)pairResponse.StatusCode}): {pairJson}");
-            using var paired = JsonDocument.Parse(pairJson);
-            var token = paired.RootElement.GetProperty("token").GetString()
-                ?? throw new InvalidOperationException("Pairing tokenが返されませんでした。");
-
-            var serverId = "lookdevpt-" + Guid.NewGuid().ToString("N");
-            secretReference = $"mcp:{serverId}:header:Authorization";
-            await secretStore.SetAsync(secretReference, "Bearer " + token);
-            var profile = new McpServerProfile
-            {
-                Id = serverId,
-                Name = "D3D12 LookDev (paired)",
-                Transport = McpTransportKind.StreamableHttp,
-                Url = endpoint,
-                Headers = [new SecretValue("Authorization", SecretRef: secretReference)],
-                EnableStandaloneGetStream = false,
-                BufferHttpRequestBody = true,
-                StartupTimeoutSeconds = 10,
-                TimeoutSeconds = 120
-            };
-            _settings = await settingsStore.UpdateAsync(settings => settings with
-            {
-                McpServers = settings.McpServers.Where(item => !item.Name.Equals(profile.Name, StringComparison.OrdinalIgnoreCase)).Append(profile).ToList()
-            });
-            // Pairing codes are one-shot. Once the profile is durable, retain its
-            // Credential Manager entry even if the immediate connection probe fails.
-            secretReference = null;
-            var previous = McpServers.FirstOrDefault(item => item.Name.Equals(profile.Name, StringComparison.OrdinalIgnoreCase));
+            var result = await lookDevPairingService.PairAsync(LookDevPairingAddress, LookDevPairingCode);
+            _settings = await settingsStore.LoadAsync();
+            var previous = McpServers.FirstOrDefault(item => item.Name.Equals(result.Profile.Name, StringComparison.OrdinalIgnoreCase));
             if (previous is not null) McpServers.Remove(previous);
-            var editor = new McpServerEditorViewModel(profile);
+            var editor = new McpServerEditorViewModel(result.Profile);
             McpServers.Add(editor);
             SelectedMcpServer = editor;
-            var connection = await mcpManager.ConnectAsync(profile);
-            if (connection.State != McpConnectionState.Connected) throw new InvalidOperationException(connection.Error ?? "MCP接続に失敗しました。");
             LookDevPairingCode = string.Empty;
-            StatusText = $"D3D12 LookDevとペアリングしました（契約 {connection.LookDevContractVersion ?? contractVersion}）。tokenはWindows Credential Managerに保存しました。";
+            StatusText = $"D3D12 LookDev {result.ApplicationVersion}とペアリングしました（契約 {result.ContractVersion}）。tokenはWindows Credential Managerに保存しました。";
         }
         catch (Exception exception)
         {
-            if (secretReference is not null) await secretStore.DeleteAsync(secretReference);
             StatusText = "LookDev pairing失敗: " + exception.Message;
         }
         finally { IsWorking = false; }

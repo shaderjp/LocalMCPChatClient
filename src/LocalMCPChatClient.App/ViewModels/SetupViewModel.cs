@@ -10,6 +10,7 @@ public sealed partial class SetupViewModel(
     ISettingsStore settingsStore,
     IArtifactInstaller artifactInstaller,
     IInferenceRuntimeManager runtimeManager,
+    ILookDevPairingService pairingService,
     IAppPaths paths) : ObservableObject
 {
     private CancellationTokenSource? _cancellation;
@@ -25,9 +26,17 @@ public sealed partial class SetupViewModel(
     [ObservableProperty] private bool _acceptLicense;
     [ObservableProperty] private bool _enableVision = true;
     [ObservableProperty] private bool _isInstalling;
+    [ObservableProperty] private bool _isPairing;
+    [ObservableProperty] private bool _pairingCompleted;
+    [ObservableProperty] private string _lookDevPairingAddress = "http://127.0.0.1:8777";
+    [ObservableProperty] private string _lookDevPairingCode = string.Empty;
+    [ObservableProperty] private string _pairingStatus = "D3D12 LookDevを起動し、MCPパネルの8桁コードを入力してください。";
+    public bool IsSuiteFirstRun { get; } = Environment.GetEnvironmentVariable("LOCAL_MCP_CHAT_SUITE_FIRST_RUN") == "1";
 
     public async Task InitializeAsync()
     {
+        var suiteAddress = Environment.GetEnvironmentVariable("LOCAL_MCP_CHAT_LOOKDEV_ADDRESS");
+        if (!string.IsNullOrWhiteSpace(suiteAddress)) LookDevPairingAddress = suiteAddress;
         var settings = await settingsStore.LoadAsync();
         Models.Clear();
         foreach (var model in settings.Models) Models.Add(model);
@@ -35,6 +44,32 @@ public sealed partial class SetupViewModel(
         var hardware = await runtimeManager.DetectHardwareAsync();
         HardwareSummary = hardware.Summary;
         SelectedBackend = hardware.HasNvidiaGpu ? RuntimeBackend.Cuda : hardware.HasVulkanGpu ? RuntimeBackend.Vulkan : RuntimeBackend.Cpu;
+    }
+
+    [RelayCommand(CanExecute = nameof(CanPairLookDev))]
+    private async Task PairLookDevAsync()
+    {
+        IsPairing = true;
+        PairLookDevCommand.NotifyCanExecuteChanged();
+        try
+        {
+            PairingStatus = "LookDev endpointを検出してコードを交換中…";
+            var result = await pairingService.PairAsync(LookDevPairingAddress, LookDevPairingCode);
+            PairingCompleted = true;
+            LookDevPairingCode = string.Empty;
+            PairingStatus = $"ペアリング完了: D3D12 LookDev {result.ApplicationVersion} / 契約 {result.ContractVersion}。tokenはWindows Credential Managerへ保存しました。";
+            InstallCommand.NotifyCanExecuteChanged();
+        }
+        catch (Exception exception)
+        {
+            PairingCompleted = false;
+            PairingStatus = "ペアリング失敗: " + exception.Message;
+        }
+        finally
+        {
+            IsPairing = false;
+            PairLookDevCommand.NotifyCanExecuteChanged();
+        }
     }
 
     [RelayCommand(CanExecute = nameof(CanInstall))]
@@ -115,9 +150,13 @@ public sealed partial class SetupViewModel(
     [RelayCommand]
     private void Cancel() => _cancellation?.Cancel();
 
-    private bool CanInstall() => AcceptLicense && SelectedModel is not null && !IsInstalling;
+    private bool CanInstall() => AcceptLicense && SelectedModel is not null && !IsInstalling &&
+                                 (!IsSuiteFirstRun || PairingCompleted);
+    private bool CanPairLookDev() => !IsPairing && !IsInstalling && !PairingCompleted &&
+                                     LookDevPairingCode.Length == 8 && LookDevPairingCode.All(char.IsAsciiDigit);
     partial void OnAcceptLicenseChanged(bool value) => InstallCommand.NotifyCanExecuteChanged();
     partial void OnSelectedModelChanged(ModelProfile? value) => InstallCommand.NotifyCanExecuteChanged();
+    partial void OnLookDevPairingCodeChanged(string value) => PairLookDevCommand.NotifyCanExecuteChanged();
 
     private IProgress<ArtifactProgress> CreateProgress(string name) => new Progress<ArtifactProgress>(progress =>
     {

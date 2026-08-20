@@ -321,6 +321,29 @@ public sealed class McpIntegrationTests
         var heatmapImage = Assert.Single(heatmap.Parts!, part => part.Kind == McpContentKind.Image);
         Assert.NotNull(heatmapImage.Artifact);
         Assert.True(File.Exists(externalArtifacts.GetAbsolutePath(heatmapImage.Artifact!)));
+
+        var tools = await manager.GetToolsAsync();
+        async Task<McpToolResult> CallAsync(string name, string arguments)
+        {
+            var tool = Assert.Single(tools, item => item.OriginalName == name);
+            var toolResult = await manager.CallToolAsync(new ToolCallRequest("external-" + Guid.NewGuid().ToString("N"), tool.NamespacedName, arguments));
+            Assert.False(toolResult.IsError, toolResult.Content);
+            return toolResult;
+        }
+
+        var checkpoint = await CallAsync("lookdevpt.create_checkpoint", "{\"label\":\"cross-repo\"}");
+        Assert.Contains("\"checkpointId\":1", checkpoint.Content);
+        var validation = await CallAsync("lookdevpt.run_actions", "{\"validateOnly\":true,\"actions\":[{\"method\":\"set_view\",\"params\":{\"environmentEnabled\":true}}]}");
+        Assert.Contains("\"validateOnly\":true", validation.Content);
+        await CallAsync("lookdevpt.restore_checkpoint", "{\"checkpointId\":1}");
+        await CallAsync("lookdevpt.delete_checkpoint", "{\"checkpointId\":1}");
+
+        var benchmark = await CallAsync("lookdevpt.start_benchmark", "{\"cameraPath\":\"camera.json\",\"kind\":\"quality\",\"frames\":1,\"warmup\":0,\"seed\":1}");
+        Assert.Contains("\"state\":\"running\"", benchmark.Content);
+        var benchmarkCompleted = await CallAsync("lookdevpt.get_benchmark", "{\"benchmarkId\":1}");
+        Assert.Contains("\"state\":\"completed\"", benchmarkCompleted.Content);
+        var benchmarkCancelled = await CallAsync("lookdevpt.cancel_benchmark", "{\"benchmarkId\":1}");
+        Assert.Contains("\"state\":\"cancelling\"", benchmarkCancelled.Content);
     }
 
     private static string GetServerPath()

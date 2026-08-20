@@ -133,6 +133,7 @@
                         <TextBlock Text="ローカルデータ" FontSize="18" FontWeight="Bold" Foreground="{StaticResource AccentBrush}" />
                         <TextBlock Text="保存先" Foreground="{StaticResource MutedTextBrush}" Margin="0,8,0,2"/><TextBox Text="{Binding DataDirectory, Mode=OneWay}" IsReadOnly="True" />
                         <TextBlock Text="ログ" Foreground="{StaticResource MutedTextBrush}" Margin="0,8,0,2"/><TextBox Text="{Binding LogsDirectory, Mode=OneWay}" IsReadOnly="True" />
+                        <Button Content="秘密情報を除外した診断JSONを作成" Command="{Binding ExportDiagnosticsCommand}" HorizontalAlignment="Left" Margin="0,8,0,0" />
                         <TextBlock Text="MCP artifacts" FontWeight="SemiBold" Margin="0,12,0,2" />
                         <TextBlock Text="{Binding ArtifactStorageText}" Foreground="{StaticResource MutedTextBrush}" />
                         <TextBox Text="{Binding ArtifactDirectory, Mode=OneWay}" IsReadOnly="True" Margin="0,3,0,4" />
