@@ -230,6 +230,12 @@ public sealed record McpConnectionInfo(
     bool SupportsSubscriptions = false,
     string? LookDevContractVersion = null);
 
+public sealed record LookDevPairingResult(
+    McpServerProfile Profile,
+    string ApplicationVersion,
+    string ContractVersion,
+    McpConnectionInfo Connection);
+
 public sealed record McpPromptDefinition(
     string ServerId,
     string ServerDisplayName,

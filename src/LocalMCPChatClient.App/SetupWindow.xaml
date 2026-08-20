@@ -1,7 +1,7 @@
 <Window x:Class="LocalMCPChatClient.App.SetupWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Local MCP Chat 初回セットアップ" Width="720" Height="610" ResizeMode="CanResize"
+        Title="Local MCP Chat 初回セットアップ" Width="760" Height="760" ResizeMode="CanResize"
         WindowStartupLocation="CenterScreen" Background="{StaticResource WindowBrush}" Foreground="{StaticResource TextBrush}">
     <Grid Margin="28">
         <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
@@ -10,9 +10,19 @@
             <TextBlock Text="モデルと推論ランタイムはGitには含まれません。必要なものだけ端末へダウンロードします。" TextWrapping="Wrap" Margin="0,8,0,20" Foreground="{StaticResource MutedTextBrush}" />
         </StackPanel>
         <Border Grid.Row="1" Background="{StaticResource PanelBrush}" CornerRadius="12" Padding="22">
+            <ScrollViewer VerticalScrollBarVisibility="Auto">
             <StackPanel>
                 <TextBlock Text="ハードウェア" FontWeight="Bold" />
                 <TextBlock Text="{Binding HardwareSummary}" TextWrapping="Wrap" Margin="0,5,0,18" />
+                <TextBlock Text="D3D12 LookDevとのペアリング" FontWeight="Bold" />
+                <TextBlock Text="Suite版ではモデル取得より先にペアリングしてください。8桁コードの有効時間は90秒です。" TextWrapping="Wrap" Foreground="{StaticResource MutedTextBrush}" Margin="0,5,0,8" />
+                <Grid>
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="120"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                    <TextBox Text="{Binding LookDevPairingAddress}" Margin="0,0,6,0" />
+                    <TextBox Grid.Column="1" Text="{Binding LookDevPairingCode, UpdateSourceTrigger=PropertyChanged}" MaxLength="8" Margin="0,0,6,0" />
+                    <Button Grid.Column="2" Content="ペアリング" Command="{Binding PairLookDevCommand}" Background="#0369A1" />
+                </Grid>
+                <TextBlock Text="{Binding PairingStatus}" TextWrapping="Wrap" Foreground="#7DD3FC" Margin="0,6,0,18" />
                 <TextBlock Text="Gemma 4 モデル" FontWeight="Bold" />
                 <ComboBox ItemsSource="{Binding Models}" SelectedItem="{Binding SelectedModel}" DisplayMemberPath="DisplayName" Margin="0,5,0,15" />
                 <TextBlock Text="推論バックエンド" FontWeight="Bold" />
@@ -24,6 +34,7 @@
                 <ProgressBar Value="{Binding ProgressValue}" Height="12" Maximum="100" />
                 <TextBlock Text="{Binding ProgressText}" TextWrapping="Wrap" Margin="0,8" Foreground="{StaticResource MutedTextBrush}" />
             </StackPanel>
+            </ScrollViewer>
         </Border>
         <DockPanel Grid.Row="2" Margin="0,18,0,0">
             <Button DockPanel.Dock="Left" Content="既存ファイルを使用" Click="ImportExisting_Click" />

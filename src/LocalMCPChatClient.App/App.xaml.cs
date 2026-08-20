@@ -31,11 +31,13 @@ public partial class App : Application
                 services.AddSingleton<IConversationStore, SqliteConversationStore>();
                 services.AddSingleton<IArtifactStore, ArtifactStore>();
                 services.AddSingleton<IConversationExporter, MarkdownConversationExporter>();
+                services.AddSingleton<IDiagnosticReportService, DiagnosticReportService>();
                 services.AddSingleton<IArtifactInstaller, ArtifactInstaller>();
                 services.AddSingleton<IInferenceRuntimeManager, LlamaRuntimeManager>();
                 services.AddSingleton<IInferenceService, LlamaInferenceService>();
                 services.AddSingleton<IInferenceBenchmarkService, LlamaBenchmarkService>();
                 services.AddSingleton<IMcpConnectionManager, McpConnectionManager>();
+                services.AddSingleton<ILookDevPairingService, LookDevPairingService>();
                 services.AddSingleton<IMcpProfileImporter, McpProfileJsonImporter>();
                 services.AddSingleton<IToolApprovalService, ToolApprovalService>();
                 services.AddSingleton<IToolApprovalPrompt, WpfToolApprovalPrompt>();
@@ -56,6 +58,8 @@ public partial class App : Application
         var mainWindow = _host.Services.GetRequiredService<MainWindow>();
         MainWindow = mainWindow;
         var settings = await _host.Services.GetRequiredService<ISettingsStore>().LoadAsync();
+        var suiteFirstRun = Environment.GetEnvironmentVariable("LOCAL_MCP_CHAT_SUITE_FIRST_RUN") == "1" &&
+                            !settings.SetupCompleted;
         if (!settings.SetupCompleted)
         {
             var setup = new SetupWindow(_host.Services.GetRequiredService<SetupViewModel>());
@@ -64,13 +68,28 @@ public partial class App : Application
 
         await _host.Services.GetRequiredService<MainViewModel>().InitializeAsync();
         mainWindow.Show();
-        _ = _host.Services.GetRequiredService<MainViewModel>().StartBackgroundInitializationAsync();
+        _ = CompleteBackgroundStartupAsync(
+            _host.Services.GetRequiredService<MainViewModel>(), suiteFirstRun);
+    }
+
+    private static async Task CompleteBackgroundStartupAsync(MainViewModel viewModel, bool runSuiteReview)
+    {
+        try
+        {
+            await viewModel.StartBackgroundInitializationAsync();
+            if (runSuiteReview) await viewModel.RunSuiteFirstReviewAsync();
+        }
+        catch (Exception exception)
+        {
+            viewModel.StatusText = "初回起動の確認に失敗しました: " + exception.Message;
+        }
     }
 
     protected override async void OnExit(ExitEventArgs e)
     {
         if (_host is not null)
         {
+            await _host.Services.GetRequiredService<MainViewModel>().StopActiveWorkflowAsync();
             await _host.StopAsync(TimeSpan.FromSeconds(8));
             _host.Dispose();
         }

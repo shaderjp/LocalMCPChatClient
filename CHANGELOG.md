@@ -4,16 +4,23 @@
 
 ## [Unreleased]
 
+## [0.2.0-beta.1] - 2026-08-20
+
 ### Added
 
 - `servers`または`mcpServers`形式のJSONからMCPサーバー設定をインポートする機能
 - インポートしたAuthorization、トークン、パスワードなどをWindows Credential Managerへ自動移行する処理
 - 接続中のMCPサーバーが公開する静的テキストResourceの検索、プレビュー、複数添付
 - Resource本文スナップショットの会話履歴保存、再生成、Markdown出力
+- Gemma 4 vision projector、画像先行mixed-content推論、画像artifactカード
+- D3D12 LookDevの画像レビュー、安全な変更・復元、非同期benchmark
+- 初回セットアップからの8桁LookDevペアリングとSuite quick review
+- token、endpoint、会話、絶対pathを除外する診断JSON
 
 ### Changed
 
 - MCP C# SDKを2.1.0へ更新し、Streamable HTTPのプロトコル固定と旧サーバーへの接続を改善
+- アプリ版を統合Suiteと共通の`0.2.0-beta.1`へ更新
 
 ## [0.1.2] - 2026-08-03
 
@@ -64,3 +71,4 @@
 [0.1.0]: https://github.com/shaderjp/LocalMCPChatClient/releases/tag/v0.1.0
 [0.1.1]: https://github.com/shaderjp/LocalMCPChatClient/releases/tag/v0.1.1
 [0.1.2]: https://github.com/shaderjp/LocalMCPChatClient/releases/tag/v0.1.2
+[0.2.0-beta.1]: https://github.com/shaderjp/LocalMCPChatClient/releases/tag/v0.2.0-beta.1

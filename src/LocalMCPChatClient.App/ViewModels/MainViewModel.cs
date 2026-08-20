@@ -83,6 +83,28 @@ public sealed partial class MainViewModel(
         }
     }
 
+    public async Task RunSuiteFirstReviewAsync()
+    {
+        SelectedReviewPreset = "quick";
+        for (var attempt = 0; attempt < 20 && !CanReviewScene(); attempt++)
+        {
+            await Task.Delay(250);
+            await RefreshMcpStatusAsync();
+        }
+        if (!CanReviewScene())
+            throw new InvalidOperationException("LookDev接続またはGemma 4の準備が完了していないため、quick reviewを開始できませんでした。");
+        StatusText = "初回セットアップ確認としてquick reviewを実行します…";
+        await ReviewSceneAsync();
+    }
+
+    public async Task StopActiveWorkflowAsync()
+    {
+        _turnCancellation?.Cancel();
+        _preloadCancellation?.Cancel();
+        for (var attempt = 0; attempt < 60 && IsBusy; attempt++)
+            await Task.Delay(100);
+    }
+
     [RelayCommand]
     private async Task NewChatAsync()
     {

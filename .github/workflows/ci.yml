@@ -23,7 +23,7 @@ jobs:
         run: |
           [xml]$props = Get-Content Directory.Build.props -Raw
           $version = [string]$props.Project.PropertyGroup.Version
-          if ($version -notmatch '^\d+\.\d+\.\d+$') {
+          if ($version -notmatch '^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$') {
             throw "Directory.Build.props のVersionがSemVer形式ではありません: $version"
           }
           if ($env:GITHUB_REF_TYPE -eq 'tag' -and $env:GITHUB_REF_NAME -ne "v$version") {
@@ -100,7 +100,8 @@ jobs:
           }
 
           $versionInfo = (Get-Item -LiteralPath $exePath).VersionInfo
-          if ($versionInfo.FileVersion -ne "$version.0" -or $versionInfo.ProductVersion -ne $version) {
+          $numericVersion = ($version -split '-', 2)[0]
+          if ($versionInfo.FileVersion -ne "$numericVersion.0" -or $versionInfo.ProductVersion -ne $version) {
             throw "EXEのバージョンが一致しません: File=$($versionInfo.FileVersion), Product=$($versionInfo.ProductVersion)"
           }
 
@@ -136,4 +137,4 @@ jobs:
           name: LocalMCPChatClient ${{ github.ref_name }}
           generate_release_notes: true
           draft: false
-          prerelease: false
+          prerelease: ${{ contains(github.ref_name, '-') }}

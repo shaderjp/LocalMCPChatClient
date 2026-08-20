@@ -85,6 +85,20 @@ public interface IMcpConnectionManager : IAsyncDisposable
     Task<McpToolResult> CallToolAsync(ToolCallRequest request, CancellationToken cancellationToken = default);
 }
 
+public interface IDiagnosticReportService
+{
+    Task<string> ExportAsync(CancellationToken cancellationToken = default);
+}
+
+public interface ILookDevPairingService
+{
+    Task<LookDevPairingResult> PairAsync(
+        string address,
+        string pairingCode,
+        string clientName = "LocalMCPChatClient",
+        CancellationToken cancellationToken = default);
+}
+
 public interface IArtifactStore
 {
     Task<StoredArtifact> StoreAsync(ReadOnlyMemory<byte> data, string mimeType, string displayName, string? sourceUri = null, CancellationToken cancellationToken = default);
