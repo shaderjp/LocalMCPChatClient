@@ -32,6 +32,12 @@ public sealed partial class SetupViewModel(
     [ObservableProperty] private string _lookDevPairingCode = string.Empty;
     [ObservableProperty] private string _pairingStatus = "D3D12 LookDevを起動し、MCPパネルの8桁コードを入力してください。";
     public bool IsSuiteFirstRun { get; } = Environment.GetEnvironmentVariable("LOCAL_MCP_CHAT_SUITE_FIRST_RUN") == "1";
+    public string SelectedModelLicenseText => SelectedModel is null
+        ? "モデルを選択してください。"
+        : $"{SelectedModel.LicenseName}（モデル {SelectedModel.Id} / revision {SelectedModel.Revision}）と llama.cpp MIT License を確認して同意します。";
+    public Uri? SelectedModelLicenseUri => Uri.TryCreate(SelectedModel?.LicenseUrl, UriKind.Absolute, out var uri) && uri.Scheme == Uri.UriSchemeHttps
+        ? uri
+        : null;
 
     public async Task InitializeAsync()
     {
@@ -41,6 +47,10 @@ public sealed partial class SetupViewModel(
         Models.Clear();
         foreach (var model in settings.Models) Models.Add(model);
         SelectedModel = Models.FirstOrDefault(model => model.Id == settings.SelectedModelId) ?? Models.FirstOrDefault();
+        AcceptLicense = SelectedModel is not null && settings.AcceptedModelLicenses.Any(acceptance =>
+            acceptance.ModelId == SelectedModel.Id &&
+            acceptance.ModelRevision == SelectedModel.Revision &&
+            acceptance.LicenseId == SelectedModel.LicenseId);
         var hardware = await runtimeManager.DetectHardwareAsync();
         HardwareSummary = hardware.Summary;
         SelectedBackend = hardware.HasNvidiaGpu ? RuntimeBackend.Cuda : hardware.HasVulkanGpu ? RuntimeBackend.Vulkan : RuntimeBackend.Cpu;
@@ -81,6 +91,20 @@ public sealed partial class SetupViewModel(
         _cancellation = new CancellationTokenSource();
         try
         {
+            if (string.IsNullOrWhiteSpace(SelectedModel.LicenseId) || SelectedModelLicenseUri is null)
+                throw new InvalidOperationException("選択したモデルのライセンス情報が不完全なため、ダウンロードを開始できません。");
+            await settingsStore.UpdateAsync(settings => settings with
+            {
+                AcceptedModelLicenses = settings.AcceptedModelLicenses
+                    .Where(acceptance => acceptance.ModelId != SelectedModel.Id)
+                    .Append(new ModelLicenseAcceptance(
+                        SelectedModel.Id,
+                        SelectedModel.Revision,
+                        SelectedModel.LicenseId,
+                        DateTimeOffset.UtcNow))
+                    .ToList()
+            }, _cancellation.Token);
+
             var runtimeArtifacts = BuiltInArtifacts.RuntimeArtifacts
                 .Where(artifact => artifact.Backend == SelectedBackend)
                 .OrderByDescending(artifact => artifact.IsRuntimeDependency)
@@ -155,7 +179,13 @@ public sealed partial class SetupViewModel(
     private bool CanPairLookDev() => !IsPairing && !IsInstalling && !PairingCompleted &&
                                      LookDevPairingCode.Length == 8 && LookDevPairingCode.All(char.IsAsciiDigit);
     partial void OnAcceptLicenseChanged(bool value) => InstallCommand.NotifyCanExecuteChanged();
-    partial void OnSelectedModelChanged(ModelProfile? value) => InstallCommand.NotifyCanExecuteChanged();
+    partial void OnSelectedModelChanged(ModelProfile? value)
+    {
+        AcceptLicense = false;
+        OnPropertyChanged(nameof(SelectedModelLicenseText));
+        OnPropertyChanged(nameof(SelectedModelLicenseUri));
+        InstallCommand.NotifyCanExecuteChanged();
+    }
     partial void OnLookDevPairingCodeChanged(string value) => PairLookDevCommand.NotifyCanExecuteChanged();
 
     private IProgress<ArtifactProgress> CreateProgress(string name) => new Progress<ArtifactProgress>(progress =>

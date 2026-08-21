@@ -142,7 +142,9 @@ public sealed class JsonSettingsStore(IAppPaths paths) : ISettingsStore
                 FileName = string.IsNullOrWhiteSpace(current.FileName) ? builtIn.FileName : current.FileName,
                 Sha256 = builtIn.Sha256,
                 Size = builtIn.Size,
-                LicenseUrl = string.IsNullOrWhiteSpace(current.LicenseUrl) ? builtIn.LicenseUrl : current.LicenseUrl,
+                LicenseId = builtIn.LicenseId,
+                LicenseName = builtIn.LicenseName,
+                LicenseUrl = builtIn.LicenseUrl,
                 Modalities = builtIn.Modalities,
                 VisionProjector = builtIn.VisionProjector
             };
@@ -156,6 +158,7 @@ public sealed class JsonSettingsStore(IAppPaths paths) : ISettingsStore
             Temperature = Math.Clamp(settings.Temperature, 0, 2),
             ImageTokenBudget = NormalizeImageTokenBudget(settings.ImageTokenBudget),
             InferenceBenchmarks = settings.InferenceBenchmarks ?? [],
+            AcceptedModelLicenses = settings.AcceptedModelLicenses ?? [],
             Models = models.Values.ToList(),
             McpServers = settings.McpServers ?? [],
             ApprovalRules = settings.ApprovalRules ?? []
@@ -175,6 +178,8 @@ public sealed class JsonSettingsStore(IAppPaths paths) : ISettingsStore
                 FileName = "gemma-4-E2B_q4_0-it.gguf",
                 Sha256 = "fa401b55b07ee70a54c6dae3903c783a6e65064312529ea57175cb5f8dec6634",
                 Size = 3_349_516_256,
+                LicenseId = "gemma-4-apache-2.0@2026-04-01",
+                LicenseName = "Gemma 4 Apache License 2.0",
                 Modalities = [InputModality.Text, InputModality.Image],
                 VisionProjector = new ArtifactDescriptor
                 {
@@ -186,7 +191,7 @@ public sealed class JsonSettingsStore(IAppPaths paths) : ISettingsStore
                     Sha256 = "021059cce659fe7f9170d5599761d7bbaf644b798dab9503aca30dc43e6beb14",
                     Size = 986_833_664
                 },
-                LicenseUrl = "https://huggingface.co/google/gemma-4-E2B-it-qat-q4_0-gguf"
+                LicenseUrl = "https://ai.google.dev/gemma/apache_2"
             },
             new ModelProfile
             {
@@ -197,6 +202,8 @@ public sealed class JsonSettingsStore(IAppPaths paths) : ISettingsStore
                 FileName = "gemma-4-E4B_q4_0-it.gguf",
                 Sha256 = "676c35070db6dbe52f93e9c864ee0fba4eddea94b9c875d9cb10daff453fbaee",
                 Size = 5_154_941_280,
+                LicenseId = "gemma-4-apache-2.0@2026-04-01",
+                LicenseName = "Gemma 4 Apache License 2.0",
                 Modalities = [InputModality.Text, InputModality.Image],
                 VisionProjector = new ArtifactDescriptor
                 {
@@ -208,7 +215,7 @@ public sealed class JsonSettingsStore(IAppPaths paths) : ISettingsStore
                     Sha256 = "7498a37cb619e55f2fcf87eb931f56e99389ed6d432e4c5c66110694c0d65578",
                     Size = 991_552_256
                 },
-                LicenseUrl = "https://huggingface.co/google/gemma-4-E4B-it-qat-q4_0-gguf"
+                LicenseUrl = "https://ai.google.dev/gemma/apache_2"
             }
         ],
         SelectedModelId = "gemma-4-e2b-it-q4"

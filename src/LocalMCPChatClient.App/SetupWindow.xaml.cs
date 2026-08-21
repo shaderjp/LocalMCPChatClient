@@ -1,4 +1,5 @@
 using System.Windows;
+using System.Diagnostics;
 using LocalMCPChatClient.App.ViewModels;
 using Microsoft.Win32;
 
@@ -17,6 +18,12 @@ public partial class SetupWindow : Window
     }
 
     private void Later_Click(object sender, RoutedEventArgs e) => Close();
+
+    private void OpenModelLicense_Click(object sender, RoutedEventArgs e)
+    {
+        if (_viewModel.SelectedModelLicenseUri is not { } uri) return;
+        Process.Start(new ProcessStartInfo(uri.AbsoluteUri) { UseShellExecute = true });
+    }
 
     private async void ImportExisting_Click(object sender, RoutedEventArgs e)
     {

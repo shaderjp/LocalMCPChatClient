@@ -80,10 +80,29 @@ public sealed class SettingsAndApprovalTests : IDisposable
             Assert.NotEmpty(model.Revision);
             Assert.Equal(64, model.Sha256?.Length);
             Assert.True(model.Size > 1_000_000_000);
+            Assert.Equal("gemma-4-apache-2.0@2026-04-01", model.LicenseId);
+            Assert.Equal("Gemma 4 Apache License 2.0", model.LicenseName);
+            Assert.Equal("https://ai.google.dev/gemma/apache_2", model.LicenseUrl);
         });
         Assert.Equal(2, settings.SchemaVersion);
         Assert.True(settings.PreloadModel);
         Assert.Empty(settings.InferenceBenchmarks);
+        Assert.Empty(settings.AcceptedModelLicenses);
+    }
+
+    [Fact]
+    public async Task Model_license_acceptance_is_scoped_to_revision_and_license_and_persists()
+    {
+        var store = new JsonSettingsStore(_paths);
+        var acceptance = new ModelLicenseAcceptance(
+            "gemma-4-e2b-it-q4",
+            "675cff42a74c774d6cb76f76d8eacb49b48c9b93",
+            "gemma-4-apache-2.0@2026-04-01",
+            DateTimeOffset.Parse("2026-08-21T00:00:00Z"));
+
+        await store.UpdateAsync(settings => settings with { AcceptedModelLicenses = [acceptance] });
+
+        Assert.Equal(acceptance, Assert.Single((await store.LoadAsync()).AcceptedModelLicenses));
     }
 
     [Fact]

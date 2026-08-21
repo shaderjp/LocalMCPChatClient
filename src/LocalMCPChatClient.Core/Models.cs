@@ -166,12 +166,20 @@ public sealed record ModelProfile
     public string FileName { get; init; } = string.Empty;
     public string? Sha256 { get; init; }
     public long? Size { get; init; }
+    public string LicenseId { get; init; } = string.Empty;
+    public string LicenseName { get; init; } = string.Empty;
     public string LicenseUrl { get; init; } = string.Empty;
     public string? LocalPath { get; init; }
     public List<InputModality> Modalities { get; init; } = [InputModality.Text];
     public ArtifactDescriptor? VisionProjector { get; init; }
     public string? VisionProjectorPath { get; init; }
 }
+
+public sealed record ModelLicenseAcceptance(
+    string ModelId,
+    string ModelRevision,
+    string LicenseId,
+    DateTimeOffset AcceptedAtUtc);
 
 public sealed record InferenceProfile
 {
@@ -351,6 +359,7 @@ public sealed record AppSettings
     public bool EnableVision { get; init; } = true;
     public int ImageTokenBudget { get; init; } = 280;
     public List<InferenceBenchmarkResult> InferenceBenchmarks { get; init; } = [];
+    public List<ModelLicenseAcceptance> AcceptedModelLicenses { get; init; } = [];
     public List<ModelProfile> Models { get; init; } = [];
     public List<McpServerProfile> McpServers { get; init; } = [];
     public List<ToolApprovalRule> ApprovalRules { get; init; } = [];
